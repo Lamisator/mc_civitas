@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:lectern",
+    "minecraft:writable_book"
+  ],
+  "result": {
+    "id": "civitas:town_ledger",
+    "count": 1
+  }
+}

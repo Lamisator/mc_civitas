@@ -1,0 +1,10 @@
+{
+	"schemaVersion": 1,
+	"id": "civitas-gametest",
+	"version": "1.0.0",
+	"name": "Civitas tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-client-gametest": ["net.antwire.civitas.gametest.CivitasTour"]
+	}
+}

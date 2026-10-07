@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "civitas:block/town_ledger"
+    },
+    "facing=east": {
+      "model": "civitas:block/town_ledger",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "civitas:block/town_ledger",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "civitas:block/town_ledger",
+      "y": 270
+    }
+  }
+}

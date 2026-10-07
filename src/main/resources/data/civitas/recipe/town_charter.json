@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "PPP",
+    "GBG",
+    "PFP"
+  ],
+  "key": {
+    "P": "minecraft:paper",
+    "G": "minecraft:gold_ingot",
+    "B": "minecraft:writable_book",
+    "F": "minecraft:feather"
+  },
+  "result": {
+    "id": "civitas:town_charter",
+    "count": 1
+  }
+}

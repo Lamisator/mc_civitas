@@ -1,0 +1,10 @@
+{
+  "itemGroup.civitas": "Civitas",
+  "item.civitas.town_charter": "Town Charter",
+  "item.civitas.ale": "Ale",
+  "block.civitas.town_ledger": "Town Ledger",
+  "entity.civitas.citizen": "Citizen",
+  "tooltip.civitas.charter": "Use on open ground to found a town. Governors: use to open the town ledger.",
+  "message.civitas.charter_hint": "Use the charter on open, fairly flat ground to found a town",
+  "message.civitas.no_town": "This ledger belongs to no town"
+}

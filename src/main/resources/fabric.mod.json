@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"id": "civitas",
+	"version": "${version}",
+	"name": "Civitas",
+	"description": "A living society. Found a town and its settlers build it block by block, farm, mine, bake, forge and brew, buy their bread with Commerce money, sleep in their beds - and live with your laws. Govern them well and they prosper; squeeze them and they go hungry, wear rags, strike, steal and leave.",
+	"authors": ["Marius Kloeck"],
+	"license": "MIT",
+	"icon": "assets/civitas/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["net.antwire.civitas.Civitas"],
+		"client": ["net.antwire.civitas.client.CivitasClient"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*",
+		"commerce": ">=1.0.0"
+	},
+	"suggests": {
+		"redbutton": "*"
+	}
+}

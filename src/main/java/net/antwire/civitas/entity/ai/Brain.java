@@ -27,6 +27,12 @@ public final class Brain {
 		this.walker = new Walker(npc);
 	}
 
+	/** Drops whatever they were doing (after an error); they pick something new next tick. */
+	public void reset() {
+		this.task = null;
+		this.walker.reset();
+	}
+
 	public @Nullable Task task() {
 		return this.task;
 	}

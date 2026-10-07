@@ -197,7 +197,29 @@ public class CitizenEntity extends PathfinderMob {
 			this.refresh(city, r);
 			r.lastPos = this.blockPosition();
 		}
-		this.brain.tick(city, r);
+		try {
+			this.brain.tick(city, r);
+		} catch (RuntimeException e) {
+			if (this.brainErrors++ < 3) {
+				net.antwire.civitas.Civitas.LOGGER.error("Citizen {} stumbled - resetting what they were doing", r.name, e);
+			}
+			this.brain.reset();
+		}
+	}
+
+	private int brainErrors;
+
+	/** Walled in (a builder put a block where they stood): step out instead of suffocating. */
+	@Override
+	public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
+		if (source.is(net.minecraft.world.damagesource.DamageTypes.IN_WALL)) {
+			net.minecraft.core.BlockPos spot = net.antwire.civitas.entity.ai.Walker.standable(level, this.blockPosition(), 4);
+			if (spot != null) {
+				this.teleportTo(spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5);
+				return false;
+			}
+		}
+		return super.hurtServer(level, source, amount);
 	}
 
 	@Override

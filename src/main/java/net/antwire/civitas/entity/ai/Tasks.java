@@ -239,7 +239,7 @@ public final class Tasks {
 				}
 				return;
 			}
-			BlockPos spot = customerSpot(this.shopBuilding);
+			BlockPos spot = this.shopBuilding == null ? null : customerSpot(this.shopBuilding);
 			if (spot == null) {
 				this.done = true;
 				return;

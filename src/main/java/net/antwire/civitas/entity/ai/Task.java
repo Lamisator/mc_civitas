@@ -29,6 +29,9 @@ public abstract class Task {
 	protected abstract void run();
 
 	public final void tick() {
+		if (this.done) {
+			return;
+		}
 		this.ticks++;
 		this.run();
 	}

@@ -44,6 +44,15 @@ public class City {
 	public long spendingYesterday;
 	/** Every building's access checked since the world was loaded. */
 	public transient boolean accessChecked;
+	/** Self-government: "none" (the governor rules) or a {@link Council.Strategy}. */
+	public String strategy = "none";
+	/** Keep the town's land loaded while nobody is near: null = as the server config says (operators decide). */
+	public @Nullable Boolean keepLoaded;
+
+	public boolean keepsLoaded() {
+		return this.keepLoaded != null ? this.keepLoaded : net.antwire.civitas.CivitasConfig.get().keepTownsLoaded;
+	}
+
 	/** The last day anyone attacked the town or its people. */
 	public int lastAttackDay = -100;
 
@@ -108,11 +117,17 @@ public class City {
 
 	public @Nullable Building nextConstruction() {
 		for (Building b : this.buildings) {
-			if (!b.complete) {
+			if (!b.complete || b.upgrading()) {
 				return b;
 			}
 		}
 		return null;
+	}
+
+	/** The town's tier: how far its town hall has been upgraded. */
+	public int tier() {
+		Building hall = this.townHall();
+		return hall == null || !hall.complete ? 1 : hall.tier;
 	}
 
 	public List<CitizenRecord> living() {
@@ -139,7 +154,7 @@ public class City {
 		int n = 0;
 		for (Building b : this.buildings) {
 			if (b.complete) {
-				n += b.type.beds;
+				n += b.bedCount();
 			}
 		}
 		return n;

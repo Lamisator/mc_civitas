@@ -46,6 +46,72 @@ public final class CivitasCommands {
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(Arrays.stream(BuildingType.values()).map(BuildingType::id), b))
 					.executes(CivitasCommands::build)))
 			.then(Commands.literal("complete").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(CivitasCommands::complete))
+			.then(Commands.literal("council")
+				.then(Commands.argument("strategy", StringArgumentType.word())
+					.suggests((c, b) -> SharedSuggestionProvider.suggest(java.util.Arrays.stream(net.antwire.civitas.city.Council.Strategy.values())
+						.map(x -> x.name().toLowerCase(java.util.Locale.ROOT)), b))
+					.executes(c -> {
+						City city = here(c, null);
+						if (city == null) {
+							return 0;
+						}
+						boolean allowed = c.getSource().getEntity() instanceof ServerPlayer p && city.isGovernor(p.getUUID())
+							|| c.getSource().permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
+						if (!allowed) {
+							c.getSource().sendFailure(Component.literal("Only the governor (or an operator) may hand the town to its council"));
+							return 0;
+						}
+						var s = net.antwire.civitas.city.Council.Strategy.byId(StringArgumentType.getString(c, "strategy"));
+						city.strategy = s.name().toLowerCase(java.util.Locale.ROOT);
+						city.log(s == net.antwire.civitas.city.Council.Strategy.NONE ? "The governor takes the town's affairs back"
+							: "The council now governs the town: " + s.title.toLowerCase(java.util.Locale.ROOT));
+						c.getSource().sendSuccess(() -> Component.literal(city.name + ": " + (s == net.antwire.civitas.city.Council.Strategy.NONE
+							? "the governor makes the laws" : "the council governs (" + s.title + ") - " + s.description)), true);
+						return 1;
+					})))
+			.then(Commands.literal("keeploaded").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+				.then(Commands.argument("mode", StringArgumentType.word())
+					.suggests((c, b) -> SharedSuggestionProvider.suggest(java.util.List.of("on", "off", "default"), b))
+					.executes(c -> {
+						City city = here(c, null);
+						if (city == null) {
+							return 0;
+						}
+						String mode = StringArgumentType.getString(c, "mode");
+						city.keepLoaded = mode.equals("on") ? Boolean.TRUE : mode.equals("off") ? Boolean.FALSE : null;
+						c.getSource().sendSuccess(() -> Component.literal(city.name + (city.keepsLoaded() ? " stays loaded and lives on while nobody is near"
+							: " sleeps while nobody is near") + (city.keepLoaded == null ? " (server default)" : "")), true);
+						return 1;
+					})))
+			.then(Commands.literal("upgrade").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+				.then(Commands.argument("type", StringArgumentType.word()).executes(c -> {
+					City city = here(c, null);
+					BuildingType t = BuildingType.byId(StringArgumentType.getString(c, "type"));
+					if (city == null || t == null) {
+						return 0;
+					}
+					ServerLevel level = c.getSource().getLevel();
+					// the lowest-tier building of the type that can go up
+					Building best = null;
+					String why = "there is no " + t.title.toLowerCase();
+					for (Building b : city.of(t, true)) {
+						String no = Townlife.whyNotUpgrade(level, city, b);
+						if (no == null && (best == null || b.tier < best.tier)) {
+							best = b;
+						} else if (no != null) {
+							why = no;
+						}
+					}
+					if (best == null) {
+						String w = why;
+						c.getSource().sendFailure(Component.literal("Can't upgrade: " + w));
+						return 0;
+					}
+					Townlife.upgrade(level, city, best);
+					Building up = best;
+					c.getSource().sendSuccess(() -> Component.literal(t.title + " to be raised to tier " + up.targetTier), true);
+					return 1;
+				})))
 			.then(Commands.literal("raid").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(c -> {
 				City city = here(c, null);
 				if (city == null) {
@@ -194,13 +260,17 @@ public final class CivitasCommands {
 		ServerLevel level = c.getSource().getLevel();
 		int n = 0;
 		for (Building b : java.util.List.copyOf(city.buildings)) {
-			if (b.complete) {
+			if (b.complete && !b.upgrading()) {
 				continue;
 			}
 			for (Construction.Step s : Construction.steps(b)) {
-				Construction.applyFree(level, s);
+				Construction.applyFree(level, city, s);
 			}
-			Townlife.complete(level, city, b);
+			if (b.upgrading()) {
+				Townlife.upgraded(level, city, b);
+			} else {
+				Townlife.complete(level, city, b);
+			}
 			n++;
 		}
 		int done = n;

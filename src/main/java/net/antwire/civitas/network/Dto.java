@@ -47,6 +47,12 @@ public final class Dto {
 		public int residents;
 		public int beds;
 		public String stalled;
+		public int tier;
+		/** Being raised to this tier (0 = no). */
+		public int upgrading;
+		/** Why it can't be upgraded now (empty = it can). */
+		public String upgradeBlocked = "";
+		public long upgradeCost;
 		public long revenue;
 		public long cost;
 		public long balance;
@@ -92,6 +98,15 @@ public final class Dto {
 		public Map<String, Integer> stockpile = new LinkedHashMap<>();
 		public List<Plan> plans = new ArrayList<>();
 		public long baseWage;
+		/** Self-government. */
+		public String strategy = "none";
+		public String strategyTitle = "";
+		public String strategyText = "";
+		/** The viewer is an operator (may switch keep-loaded). */
+		public boolean op;
+		/** -1 = server default, 0 = off, 1 = on. */
+		public int keepLoaded = -1;
+		public boolean keepsLoaded;
 	}
 
 	public static class Citizen {

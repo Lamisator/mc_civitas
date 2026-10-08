@@ -35,6 +35,9 @@ public class GovernScreen extends Screen {
 	private final List<Button> tabButtons = new ArrayList<>();
 	private final List<Button>[] perTab = new List[TABS.length];
 	private EditBox amount;
+	private String hoverNote;
+	private Button councilButton;
+	private Button loadButton;
 
 	/** Number laws: key, label, step, unit. */
 	record Law(String key, String label, double step, String unit) {
@@ -113,14 +116,31 @@ public class GovernScreen extends Screen {
 				}
 			}).bounds(l + 352, y, 40, 14).build()));
 		}
+		// self-government and (for operators) keeping the town loaded
+		this.perTab[3].add(this.councilButton = this.addRenderableWidget(Button.builder(Component.literal("Council"), b -> {
+			Dto.Govern d = ClientState.govern;
+			if (d != null) {
+				String[] all = {"none", "growth", "equality", "prosperity", "order", "extortion", "balanced"};
+				int i = java.util.Arrays.asList(all).indexOf(d.strategy);
+				act("strategy", null, 0, all[(i + 1) % all.length], 0, 0);
+			}
+		}).bounds(l + 206, t + H - 32, 140, 14).build()));
+		this.perTab[3].add(this.loadButton = this.addRenderableWidget(Button.builder(Component.literal("Load"), b -> {
+			Dto.Govern d = ClientState.govern;
+			if (d != null) {
+				// server default -> on -> off -> server default
+				act("keeploaded", null, d.keepLoaded == -1 ? 1 : d.keepLoaded == 1 ? 0 : -1, null, 0, 0);
+			}
+		}).bounds(l + 348, t + H - 32, 44, 14).build()));
 		// buildings: one button per kind of building
-		String[] types = {"house", "farm", "bakery", "butcher", "blacksmith", "mine", "lumber_mill", "tavern", "sheriff", "prison", "bank", "factory"};
+		String[] types = {"house", "farm", "bakery", "butcher", "blacksmith", "mine", "lumber_mill", "tavern", "sheriff", "prison", "bank", "factory",
+			"barracks"};
 		for (int i = 0; i < types.length; i++) {
 			String type = types[i];
-			int col = i % 4;
-			int row = i / 4;
-			this.perTab[2].add(this.addRenderableWidget(Button.builder(Component.literal(type), b -> act("build", null, 0, type, 0, 0))
-				.bounds(l + 8 + col * 97, t + H - 66 + row * 17, 95, 15).build()));
+			int col = i % 5;
+			int row = i / 5;
+			this.perTab[2].add(this.addRenderableWidget(Button.builder(Component.literal(type.replace('_', ' ')), b -> act("build", null, 0, type, 0, 0))
+				.bounds(l + 8 + col * 77, t + H - 66 + row * 17, 75, 15).build()));
 		}
 		// treasury
 		this.amount = this.addRenderableWidget(new EditBox(this.font, l + 120, t + 104, 90, 16, Component.literal("Amount")));
@@ -219,6 +239,13 @@ public class GovernScreen extends Screen {
 				return true;
 			}
 		}
+		if (d != null && d.editable && this.tab == 2 && mx > W - 100 && mx < W - 54 && my > 52) {
+			int i = (int) ((my - 52) / ROW) + this.scroll;
+			if (i >= 0 && i < d.buildings.size() && d.buildings.get(i).complete && d.buildings.get(i).upgrading == 0 && d.buildings.get(i).tier < 3) {
+				act("upgrade", null, 0, null, 0, d.buildings.get(i).id);
+				return true;
+			}
+		}
 		if (d != null && d.editable && this.tab == 2 && mx > W - 50 && mx < W - 8 && my > 52) {
 			int i = (int) ((my - 52) / ROW) + this.scroll;
 			if (i >= 0 && i < d.buildings.size() && !d.buildings.get(i).type.equals("town_hall")) {
@@ -272,6 +299,9 @@ public class GovernScreen extends Screen {
 		this.stat(g, l + 10, y + 44, "Yesterday", "+" + Money.number(d.income) + " / −" + Money.number(d.spending), Ui.MUTED);
 		if (!d.ticker.isEmpty()) {
 			this.stat(g, l + 10, y + 55, "Shares " + d.ticker, Money.format(d.sharePrice), Ui.BLUE);
+		}
+		if (!d.strategy.equals("none")) {
+			this.stat(g, l + 10, y + 77, "Laws by", "the council · " + d.strategyTitle, 0xFFE8C547);
 		}
 		if (d.grievance > 2 || d.fear > 2) {
 			this.stat(g, l + 10, y + 66, "Resentment", String.format(Locale.ROOT, "%.0f   fear %.0f", d.grievance, d.fear), Ui.RED);
@@ -348,9 +378,10 @@ public class GovernScreen extends Screen {
 		for (int i = 0; i < rows && i + this.scroll < d.buildings.size(); i++) {
 			Dto.BuildingRow b = d.buildings.get(i + this.scroll);
 			int y = t + 52 + i * ROW;
-			g.text(this.font, b.title, l + cols[0], y + 2, Ui.TEXT, false);
-			String state = b.complete ? "in use" : !b.stalled.isEmpty() ? "halted: no money" : "building " + b.progress + "%";
-			Ui.small(g, this.font, state, l + cols[1], y + 3, b.complete ? Ui.GREEN : !b.stalled.isEmpty() ? Ui.RED : 0xFFE8C547);
+			g.text(this.font, b.title + " " + "I".repeat(Math.max(1, b.tier)), l + cols[0], y + 2, Ui.TEXT, false);
+			String state = b.upgrading > 0 ? (!b.stalled.isEmpty() ? "halted: no money" : "to tier " + b.upgrading + ": " + b.progress + "%")
+				: b.complete ? "in use" : !b.stalled.isEmpty() ? "halted: no money" : "building " + b.progress + "%";
+			Ui.small(g, this.font, state, l + cols[1], y + 3, b.upgrading == 0 && b.complete ? Ui.GREEN : !b.stalled.isEmpty() ? Ui.RED : 0xFFE8C547);
 			String people = b.beds > 0 ? b.residents + "/" + b.beds + " live here" : b.slots > 0 ? b.workers + "/" + b.slots + " work" : "";
 			Ui.small(g, this.font, people, l + cols[2], y + 3, Ui.MUTED);
 			if (b.revenue != 0 || b.cost != 0) {
@@ -360,11 +391,31 @@ public class GovernScreen extends Screen {
 				boolean hover = Ui.inside(mx, my, l + W - 50, y, l + W - 8, y + ROW);
 				Ui.small(g, this.font, "abandon", l + W - 46, y + 3, hover ? Ui.RED : 0xFF6B7682);
 			}
+			if (d.editable && b.complete && b.upgrading == 0 && b.tier < 3) {
+				boolean can = b.upgradeBlocked.isEmpty();
+				boolean hover = Ui.inside(mx, my, l + W - 100, y, l + W - 54, y + ROW);
+				Ui.small(g, this.font, "↑ tier " + (b.tier + 1), l + W - 98, y + 3, can ? (hover ? Ui.GOLD : Ui.GREEN) : 0xFF6B7682);
+				if (hover) {
+					this.hoverNote = can ? "Upgrade for about " + Money.plain(b.upgradeCost) : "Not yet: " + b.upgradeBlocked;
+				}
+			}
 		}
 		g.text(this.font, "Plan a new building (the builders start on it next):", l + 8, t + H - 78, Ui.GOLD, false);
+		if (this.hoverNote != null) {
+			Ui.small(g, this.font, this.hoverNote, l + 8, t + H - 88, Ui.MUTED);
+			this.hoverNote = null;
+		}
 	}
 
 	private void laws(GuiGraphicsExtractor g, Dto.Govern d, int l, int t) {
+		if (this.councilButton != null) {
+			this.councilButton.setMessage(Component.literal("Laws by: " + (d.strategy.equals("none") ? "you" : "council · " + d.strategyTitle)));
+			this.councilButton.active = d.editable;
+		}
+		if (this.loadButton != null) {
+			this.loadButton.visible = d.op && this.tab == 3;
+			this.loadButton.setMessage(Component.literal(d.keepLoaded == -1 ? "Load: -" : d.keepLoaded == 1 ? "Load: on" : "Load: off"));
+		}
 		Ui.panel(g, l + 6, t + 40, l + 198, t + H - 16, Ui.PANEL);
 		Ui.panel(g, l + 202, t + 40, l + W - 6, t + H - 16, Ui.PANEL);
 		for (int i = 0; i < NUMBERS.length; i++) {
@@ -380,6 +431,12 @@ public class GovernScreen extends Screen {
 			g.centeredText(this.font, shown, l + 157, y + 3, Ui.GOLD);
 		}
 		Ui.small(g, this.font, "Standard wage " + Money.format(d.baseWage) + "/day", l + 10, t + H - 26, Ui.MUTED);
+		if (!d.strategy.equals("none")) {
+			Ui.small(g, this.font, "The council sets these laws each morning.", l + 206, t + H - 42, 0xFFE8C547);
+		}
+		if (d.op) {
+			Ui.small(g, this.font, d.keepsLoaded ? "kept loaded" : "sleeps when alone", l + 340, t + H - 42, Ui.MUTED);
+		}
 		for (int i = 0; i < TOGGLES.length; i++) {
 			int y = t + 46 + i * 17;
 			g.text(this.font, TOGGLES[i].label, l + 206, y + 3, Ui.TEXT, false);

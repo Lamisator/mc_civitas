@@ -27,22 +27,30 @@ public final class Blueprint {
 	public final int w;
 	public final int h;
 	public final int d;
+	/** How far it reaches below the ground floor (a cellar): y runs from -base to h-1. */
+	public final int base;
 	private final BlockState[] states;
 	public final Map<String, List<BlockPos>> marks;
 
-	private Blueprint(int w, int h, int d, BlockState[] states, Map<String, List<BlockPos>> marks) {
+	private Blueprint(int w, int h, int d, int base, BlockState[] states, Map<String, List<BlockPos>> marks) {
 		this.w = w;
 		this.h = h;
 		this.d = d;
+		this.base = base;
 		this.states = states;
 		this.marks = marks;
 	}
 
 	public @Nullable BlockState get(int x, int y, int z) {
-		if (x < 0 || y < 0 || z < 0 || x >= this.w || y >= this.h || z >= this.d) {
+		if (x < 0 || y < -this.base || z < 0 || x >= this.w || y >= this.h || z >= this.d) {
 			return null;
 		}
-		return this.states[(y * this.d + z) * this.w + x];
+		return this.states[((y + this.base) * this.d + z) * this.w + x];
+	}
+
+	/** Lowest y with cells. */
+	public int minY() {
+		return -this.base;
 	}
 
 	public List<BlockPos> marks(String name) {
@@ -55,31 +63,41 @@ public final class Blueprint {
 	}
 
 	public static Builder builder(int w, int h, int d) {
-		return new Builder(w, h, d);
+		return new Builder(w, h, d, 0);
+	}
+
+	public static Builder builder(int w, int h, int d, int base) {
+		return new Builder(w, h, d, base);
 	}
 
 	public static final class Builder {
 		final int w;
 		final int h;
 		final int d;
+		final int base;
 		final BlockState[] states;
 		final Map<String, List<BlockPos>> marks = new LinkedHashMap<>();
 
-		Builder(int w, int h, int d) {
+		Builder(int w, int h, int d, int base) {
 			this.w = w;
 			this.h = h;
 			this.d = d;
-			this.states = new BlockState[w * h * d];
+			this.base = base;
+			this.states = new BlockState[w * (h + base) * d];
 		}
 
 		public Blueprint build() {
 			Access.clearDoorways(this, "blueprint");
-			return new Blueprint(this.w, this.h, this.d, this.states, this.marks);
+			return new Blueprint(this.w, this.h, this.d, this.base, this.states, this.marks);
+		}
+
+		private boolean inside(int x, int y, int z) {
+			return x >= 0 && y >= -this.base && z >= 0 && x < this.w && y < this.h && z < this.d;
 		}
 
 		public Builder set(int x, int y, int z, @Nullable BlockState s) {
-			if (x >= 0 && y >= 0 && z >= 0 && x < this.w && y < this.h && z < this.d) {
-				this.states[(y * this.d + z) * this.w + x] = s;
+			if (this.inside(x, y, z)) {
+				this.states[((y + this.base) * this.d + z) * this.w + x] = s;
 			}
 			return this;
 		}
@@ -89,8 +107,8 @@ public final class Blueprint {
 		}
 
 		public @Nullable BlockState get(int x, int y, int z) {
-			if (x >= 0 && y >= 0 && z >= 0 && x < this.w && y < this.h && z < this.d) {
-				return this.states[(y * this.d + z) * this.w + x];
+			if (this.inside(x, y, z)) {
+				return this.states[((y + this.base) * this.d + z) * this.w + x];
 			}
 			return null;
 		}

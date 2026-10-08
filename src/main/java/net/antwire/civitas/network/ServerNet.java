@@ -6,6 +6,7 @@ import java.util.UUID;
 import net.antwire.civitas.Civitas;
 import net.antwire.civitas.city.Building;
 import net.antwire.civitas.city.BuildingType;
+import net.antwire.civitas.city.Blueprints;
 import net.antwire.civitas.city.CitizenRecord;
 import net.antwire.civitas.city.City;
 import net.antwire.civitas.city.CityManager;
@@ -141,10 +142,19 @@ public final class ServerNet {
 			row.progress = b.complete ? 100 : (int) Math.min(99, b.progress * 100L / steps);
 			row.workers = b.type == BuildingType.TOWN_HALL ? (int) c.citizens.values().stream().filter(r -> r.present() && r.job == Job.BUILDER).count()
 				: b.workers.size();
-			row.slots = b.type.workers;
+			row.slots = b.workerSlots();
 			row.residents = b.residents.size();
-			row.beds = b.type.beds;
+			row.beds = b.bedCount();
 			row.stalled = b.stalled;
+			row.tier = b.tier;
+			row.upgrading = b.upgrading() ? b.targetTier : 0;
+			if (level != null && b.complete && !b.upgrading() && b.tier < Blueprints.TIERS) {
+				String why = Townlife.whyNotUpgrade(level, c, b);
+				row.upgradeBlocked = why == null ? "" : why;
+				row.upgradeCost = Construction.upgradeCost(b, b.tier + 1, Townlife.upgradeOrigin(b, b.tier + 1));
+			} else {
+				row.upgradeBlocked = b.tier >= Blueprints.TIERS ? "highest tier" : "";
+			}
 			row.revenue = b.revenueYesterday;
 			row.cost = b.costYesterday;
 			row.balance = CommerceApi.balance(b.account(c));
@@ -154,6 +164,13 @@ public final class ServerNet {
 			row.z = e.getZ();
 			d.buildings.add(row);
 		}
+		net.antwire.civitas.city.Council.Strategy strat = net.antwire.civitas.city.Council.strategy(c);
+		d.strategy = strat.name().toLowerCase(java.util.Locale.ROOT);
+		d.strategyTitle = strat.title;
+		d.strategyText = strat.description;
+		d.op = p.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+		d.keepLoaded = c.keepLoaded == null ? -1 : c.keepLoaded ? 1 : 0;
+		d.keepsLoaded = c.keepsLoaded();
 		for (int i = 0; i < Math.min(40, c.log.size()); i++) {
 			d.log.add(c.log.get(i));
 		}
@@ -167,7 +184,7 @@ public final class ServerNet {
 			Dto.Plan plan = new Dto.Plan();
 			plan.type = t.id();
 			plan.title = t.title;
-			plan.cost = Construction.estimate(t);
+			plan.cost = Construction.estimate(t, c.tier());
 			plan.note = note(t);
 			d.plans.add(plan);
 		}
@@ -230,7 +247,7 @@ public final class ServerNet {
 		}
 		for (Building b : c.buildings) {
 			if (b.complete && b.type.job != null && b.type != BuildingType.TOWN_HALL) {
-				d.jobs.add(new Object[]{b.id, b.type.job.title + " (" + b.type.title + ")", b.type.workers - b.workers.size()});
+				d.jobs.add(new Object[]{b.id, b.type.job.title + " (" + b.type.title + ")", b.workerSlots() - b.workers.size()});
 			}
 		}
 		return d;
@@ -288,6 +305,18 @@ public final class ServerNet {
 					CommerceApi.burn(c.account(), fee, "Planning fee: " + t.title);
 					BlockPos e = b.entrance();
 					message(p, t.title + " planned at " + e.getX() + " " + e.getY() + " " + e.getZ(), true);
+				}
+			}
+			case "upgrade" -> {
+				Building b = c.building(a.building);
+				if (b == null) {
+					break;
+				}
+				String why = Townlife.whyNotUpgrade(level, c, b);
+				if (why != null) {
+					message(p, "The " + b.type.title.toLowerCase() + " can't be upgraded: " + why, false);
+				} else if (Townlife.upgrade(level, c, b)) {
+					message(p, b.type.title + " to be raised to tier " + b.targetTier + " - the builders start on it next", true);
 				}
 			}
 			case "demolish" -> {
@@ -364,6 +393,26 @@ public final class ServerNet {
 				}
 			}
 			case "ipo" -> ipo(p, c);
+			case "strategy" -> {
+				net.antwire.civitas.city.Council.Strategy s = net.antwire.civitas.city.Council.Strategy.byId(a.text);
+				c.strategy = s.name().toLowerCase(java.util.Locale.ROOT);
+				if (s == net.antwire.civitas.city.Council.Strategy.NONE) {
+					c.log(p.getGameProfile().name() + " takes the town's affairs back into their own hands");
+					message(p, "You govern " + c.name + " yourself again", true);
+				} else {
+					c.log("The council now governs the town: " + s.title.toLowerCase(java.util.Locale.ROOT));
+					message(p, "The council governs " + c.name + " (" + s.title + ") - it sets the laws each morning", true);
+				}
+			}
+			case "keeploaded" -> {
+				if (!p.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) {
+					message(p, "Only an operator may change that", false);
+					break;
+				}
+				c.keepLoaded = a.value > 0.5 ? Boolean.TRUE : a.value < -0.5 ? null : Boolean.FALSE;
+				message(p, c.name + (c.keepsLoaded() ? " stays loaded while nobody is near" : " sleeps while nobody is near")
+					+ (c.keepLoaded == null ? " (server default)" : ""), true);
+			}
 			case "rename" -> {
 				if (a.text != null && !a.text.isBlank() && a.text.length() <= 32) {
 					c.log("The town was renamed from " + c.name + " to " + a.text.trim());

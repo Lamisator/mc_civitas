@@ -101,7 +101,7 @@ public final class Townlife {
 			}
 			r.home = -1;
 			for (Building b : city.buildings) {
-				if (b.complete && b.type.beds > 0 && b.residents.size() < b.type.beds) {
+				if (b.complete && b.bedCount() > 0 && b.residents.size() < b.bedCount()) {
 					b.residents.add(r.uuid);
 					r.home = b.id;
 					break;
@@ -155,7 +155,7 @@ public final class Townlife {
 			if (!b.complete || b.type.job == null || b.type == BuildingType.TOWN_HALL && b.type.job == Job.CLERK && city.population() < 6) {
 				continue;
 			}
-			while (b.workers.size() < b.type.workers && !idle.isEmpty()) {
+			while (b.workers.size() < b.workerSlots() && !idle.isEmpty()) {
 				CitizenRecord r = idle.removeFirst();
 				r.job = b.type.job;
 				r.workplace = b.id;
@@ -181,7 +181,7 @@ public final class Townlife {
 			r.workplace = b.id;
 			return true;
 		}
-		if (b.type.job == null || b.workers.size() >= b.type.workers) {
+		if (b.type.job == null || b.workers.size() >= b.workerSlots()) {
 			return false;
 		}
 		r.job = b.type.job;
@@ -202,7 +202,10 @@ public final class Townlife {
 		}
 		int pop = city.population();
 		BuildingType want = null;
-		if (city.of(BuildingType.FARM, false).isEmpty()) {
+		BuildingType favoured = Council.priority(city);
+		if (favoured != null && !city.of(BuildingType.FARM, false).isEmpty() && !city.of(BuildingType.BAKERY, false).isEmpty()) {
+			want = favoured;
+		} else if (city.of(BuildingType.FARM, false).isEmpty()) {
 			want = BuildingType.FARM;
 		} else if (city.of(BuildingType.BAKERY, false).isEmpty()) {
 			want = BuildingType.BAKERY;
@@ -230,14 +233,38 @@ public final class Townlife {
 			want = BuildingType.FARM;
 		}
 		if (want == null) {
+			autoUpgrade(level, city);
 			return;
 		}
-		if (CommerceApi.balance(city.account()) < Construction.estimate(want) / 2) {
+		if (CommerceApi.balance(city.account()) < Construction.estimate(want, city.tier()) / 2) {
 			return;
 		}
 		Building b = m.plan(level, city, want);
 		if (b != null) {
 			CommerceApi.burn(city.account(), (long) want.fee * 100, "Planning fee: " + want.title);
+		}
+	}
+
+	/** One upgrade at a time: the town hall when the town is big enough, then homes if beds are short, then the rest. */
+	static void autoUpgrade(ServerLevel level, City city) {
+		for (Building b : city.buildings) {
+			if (b.upgrading() || !b.complete && b.type != BuildingType.TOWN_HALL) {
+				return;
+			}
+		}
+		List<Building> order = new ArrayList<>();
+		Building hall = city.townHall();
+		if (hall != null) {
+			order.add(hall);
+		}
+		if (city.beds() < city.population() + 4) {
+			order.addAll(city.of(BuildingType.HOUSE, true));
+		}
+		order.addAll(city.buildings);
+		for (Building b : order) {
+			if (whyNotUpgrade(level, city, b) == null && upgrade(level, city, b)) {
+				return;
+			}
 		}
 	}
 
@@ -298,18 +325,7 @@ public final class Townlife {
 			Storage.add(level, b, new ItemStack(Items.CARROT, 8));
 			Storage.add(level, b, new ItemStack(Items.POTATO, 8));
 		}
-		if (b.type == BuildingType.BARRACKS) {
-			// spare weapons on the racks
-			for (BlockPos rack : b.marks("rack")) {
-				if (level.getBlockEntity(rack) instanceof net.minecraft.world.Container c) {
-					for (int i = 0; i < c.getContainerSize(); i++) {
-						if (c.getItem(i).isEmpty()) {
-							c.setItem(i, net.antwire.civitas.compat.Arms.stack(net.antwire.civitas.compat.Arms.weapon(i == 1 ? 3 : 0)));
-						}
-					}
-				}
-			}
-		}
+		fillRacks(level, b);
 		if (b.type == BuildingType.TOWN_HALL) {
 			BlockPos plaza = b.mark("plaza");
 			if (plaza != null) {
@@ -331,8 +347,27 @@ public final class Townlife {
 		checkAccess(level, city, b);
 	}
 
+	/** Spare weapons on the barracks' racks. */
+	static void fillRacks(ServerLevel level, Building b) {
+		if (b.type != BuildingType.BARRACKS) {
+			return;
+		}
+		for (BlockPos rack : b.marks("rack")) {
+			if (level.getBlockEntity(rack) instanceof net.minecraft.world.Container c) {
+				for (int i = 0; i < c.getContainerSize(); i++) {
+					if (c.getItem(i).isEmpty()) {
+						c.setItem(i, net.antwire.civitas.compat.Arms.stack(net.antwire.civitas.compat.Arms.weapon(i == 1 ? 3 : 0)));
+					}
+				}
+			}
+		}
+	}
+
 	/** Runs the access check on a finished building and tells the town when people can't get in. */
 	public static Access.Audit checkAccess(ServerLevel level, City city, Building b) {
+		if (b.upgrading()) {
+			return new Access.Audit(0, 0, false, null);
+		}
 		Access.Audit a = Access.audit(level, city, b);
 		String now = a.blocked() == null ? "" : a.blocked();
 		if (!now.equals(b.blocked)) {
@@ -347,6 +382,134 @@ public final class Townlife {
 			Construction.forget(b);
 		}
 		return a;
+	}
+
+	// ------------------------------------------------------------------ tiers
+
+	/** Why the building can't go up a tier now, or null if it can. */
+	public static @Nullable String whyNotUpgrade(ServerLevel level, City city, Building b) {
+		int to = b.tier + 1;
+		if (!b.complete || b.upgrading()) {
+			return "it is still being built";
+		}
+		if (to > Blueprints.TIERS) {
+			return "it is as grand as it gets";
+		}
+		CivitasConfig cfg = CivitasConfig.get();
+		if (b.type == BuildingType.TOWN_HALL) {
+			int need = to == 2 ? cfg.tier2Population : cfg.tier3Population;
+			if (city.population() < need) {
+				return "the town needs " + need + " citizens (it has " + city.population() + ")";
+			}
+		} else if (city.tier() < to) {
+			return "the town hall must be raised to tier " + to + " first";
+		}
+		BlockPos origin = upgradeOrigin(b, to);
+		String room = roomToGrow(level, city, b, to, origin);
+		if (room != null) {
+			return room;
+		}
+		long cost = Construction.upgradeCost(b, to, origin);
+		if (CommerceApi.balance(city.account()) < Construction.fee(b.type, to) + cost / 3) {
+			return "the treasury can't pay for it (about " + CommerceApi.format(cost) + ")";
+		}
+		return null;
+	}
+
+	/** Where the plot of the next tier starts: the same plot, or for a building from before tiers one laid out around its door. */
+	public static BlockPos upgradeOrigin(Building b, int to) {
+		if (b.layout != 0) {
+			return b.origin;
+		}
+		BlockPos door = b.entrance();
+		BlockPos rel = Blueprints.of(b.type, to).mark("entrance");
+		return door.subtract(rel.rotate(b.rot())).atY(b.origin.getY());
+	}
+
+	/** Null if the bigger building fits: nothing of anyone else's in the way, no other plot or way to a door. */
+	static @Nullable String roomToGrow(ServerLevel level, City city, Building b, int to, BlockPos origin) {
+		java.util.Map<BlockPos, BlockState> now = Construction.cells(b.blueprint(), b.origin, b.rot());
+		java.util.Map<BlockPos, BlockState> next = Construction.cells(Blueprints.of(b.type, to), origin, b.rot());
+		// the ways to other doors may cross the plot, but nothing may be built across them
+		for (Building o : city.buildings) {
+			if (o == b) {
+				continue;
+			}
+			for (BlockPos w : o.approach) {
+				BlockState feet = next.get(w.above());
+				BlockState head = next.get(w.above(2));
+				BlockState under = next.get(w);
+				if (feet != null && !Access.walkThrough(feet) || head != null && !Access.headRoom(head) || under != null && !Access.floor(under)) {
+					return "no room to grow: the way to the " + o.type.title.toLowerCase() + " runs there";
+				}
+			}
+		}
+		for (BlockPos p : next.keySet()) {
+			for (Building o : city.buildings) {
+				if (o == b) {
+					continue;
+				}
+				net.minecraft.world.phys.AABB box = o.bounds();
+				if (p.getX() >= box.minX && p.getX() < box.maxX && p.getZ() >= box.minZ && p.getZ() < box.maxZ) {
+					return "no room to grow: the " + o.type.title.toLowerCase() + " is in the way";
+				}
+			}
+			if (now.containsKey(p)) {
+				continue;
+			}
+			BlockState s = level.getBlockState(p);
+			// the old foundations under the building are dug out for a cellar
+			if (p.getY() < b.origin.getY() && s.is(Blocks.COBBLESTONE)) {
+				continue;
+			}
+			if (!s.isAir() && (!Construction.natural(s) || level.getBlockEntity(p) != null)) {
+				return "no room to grow: something is built at " + p.toShortString();
+			}
+		}
+		return null;
+	}
+
+	/** Starts the upgrade: the builders take it from here. */
+	public static boolean upgrade(ServerLevel level, City city, Building b) {
+		if (whyNotUpgrade(level, city, b) != null) {
+			return false;
+		}
+		int to = b.tier + 1;
+		BlockPos origin = upgradeOrigin(b, to);
+		CommerceApi.burn(city.account(), Construction.fee(b.type, to), "Planning fee: " + b.type.title + " tier " + to);
+		b.targetTier = to;
+		b.upgradeOrigin = origin.equals(b.origin) ? null : origin;
+		Construction.forget(b);
+		b.progress = 0;
+		b.steps = Construction.steps(b).size();
+		city.log("The " + b.type.title.toLowerCase() + " is to be raised to tier " + to);
+		return true;
+	}
+
+	/** The builders are done: the building is the new tier, with more room for people and a fresh way to the square. */
+	public static void upgraded(ServerLevel level, City city, Building b) {
+		int to = b.targetTier;
+		b.origin = b.targetOrigin();
+		b.tier = to;
+		b.layout = 1;
+		b.targetTier = 0;
+		b.upgradeOrigin = null;
+		Construction.forget(b);
+		b.progress = b.steps = 0;
+		Access.Route r = city.townHall() == null ? null : Access.route(level, city, b);
+		if (r != null) {
+			b.approach = new ArrayList<>(r.path());
+			b.approachFill = new ArrayList<>(r.fill());
+			Access.build(level, b);
+		}
+		setupShop(level, city, b);
+		fillRacks(level, b);
+		if (b.type == BuildingType.TOWN_HALL && b.mark("plaza") != null) {
+			city.center = b.mark("plaza");
+		}
+		city.log("The " + b.type.title.toLowerCase() + " was raised to tier " + to);
+		level.playSound(null, b.entrance(), SoundEvents.PLAYER_LEVELUP, SoundSource.BLOCKS, 1.0F, 0.9F);
+		checkAccess(level, city, b);
 	}
 
 	private record Offer(Item item, int count, long price) {

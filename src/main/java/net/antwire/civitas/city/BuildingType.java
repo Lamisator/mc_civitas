@@ -34,6 +34,19 @@ public enum BuildingType {
 		this.fee = fee;
 	}
 
+	/** Worker slots at a tier: every tier above the first adds one (the barracks two, the town hall none). */
+	public int workers(int tier) {
+		if (this.workers == 0 || this == TOWN_HALL) {
+			return this.workers;
+		}
+		return this.workers + (tier - 1) * (this == BARRACKS ? 2 : 1);
+	}
+
+	/** Beds at a tier: a house gains two with each tier. */
+	public int beds(int tier) {
+		return this.beds == 0 ? 0 : this.beds + (tier - 1) * 2;
+	}
+
 	public String id() {
 		return this.name().toLowerCase(Locale.ROOT);
 	}

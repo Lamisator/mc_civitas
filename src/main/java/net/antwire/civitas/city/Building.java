@@ -31,6 +31,14 @@ public class Building {
 	public long revenueYesterday;
 	public long costYesterday;
 	public int builtDay = -1;
+	/** How grand it is (1 to 3); the town hall's tier is the town's. */
+	public int tier = 1;
+	/** Being rebuilt to this tier (0 = not being upgraded). */
+	public int targetTier;
+	/** Where the plot of the upgraded building starts (old buildings are re-planned around their door). */
+	public @Nullable BlockPos upgradeOrigin;
+	/** 0 = built to the plans before tiers ({@link LegacyBlueprints}), 1 = a plot with room for every tier. */
+	public int layout;
 	/** The way from the door to the town square: the ground block of every step (see {@link Access}). */
 	public List<BlockPos> approach = new ArrayList<>();
 	/** Blocks banked up under the way where the ground dips. */
@@ -53,7 +61,27 @@ public class Building {
 	}
 
 	public Blueprint blueprint() {
-		return Blueprints.of(this.type);
+		return this.layout == 0 ? LegacyBlueprints.of(this.type) : Blueprints.of(this.type, this.tier);
+	}
+
+	public Blueprint targetBlueprint() {
+		return Blueprints.of(this.type, this.targetTier);
+	}
+
+	public BlockPos targetOrigin() {
+		return this.upgradeOrigin == null ? this.origin : this.upgradeOrigin;
+	}
+
+	public boolean upgrading() {
+		return this.targetTier > this.tier;
+	}
+
+	public int workerSlots() {
+		return this.type.workers(this.tier);
+	}
+
+	public int bedCount() {
+		return this.type.beds(this.tier);
 	}
 
 	/** Blueprint coordinates to world coordinates. */
@@ -93,10 +121,15 @@ public class Building {
 		return this.world(bp.w / 2, 1, bp.d / 2);
 	}
 
+	/** The plot (while being upgraded: the old and the new plot together). */
 	public AABB bounds() {
-		Blueprint bp = this.blueprint();
-		BlockPos a = this.world(0, 0, 0);
-		BlockPos b = this.world(bp.w - 1, bp.h - 1, bp.d - 1);
+		AABB box = box(this.blueprint(), this.origin);
+		return this.upgrading() ? box.minmax(box(this.targetBlueprint(), this.targetOrigin())) : box;
+	}
+
+	private AABB box(Blueprint bp, BlockPos origin) {
+		BlockPos a = origin.offset(new BlockPos(0, bp.minY(), 0).rotate(this.rot()));
+		BlockPos b = origin.offset(new BlockPos(bp.w - 1, bp.h - 1, bp.d - 1).rotate(this.rot()));
 		return new AABB(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()), Math.max(a.getX(), b.getX()) + 1,
 			Math.max(a.getY(), b.getY()) + 1, Math.max(a.getZ(), b.getZ()) + 1);
 	}
@@ -106,6 +139,10 @@ public class Building {
 	}
 
 	public String title() {
-		return this.type.title + (this.complete ? "" : " (construction " + (this.steps <= 0 ? 0 : this.progress * 100 / this.steps) + "%)");
+		String t = this.type.title + (this.tier > 1 ? " " + "I".repeat(this.tier) : "");
+		if (this.upgrading()) {
+			return t + " (upgrading to tier " + this.targetTier + ", " + (this.steps <= 0 ? 0 : this.progress * 100 / this.steps) + "%)";
+		}
+		return t + (this.complete ? "" : " (construction " + (this.steps <= 0 ? 0 : this.progress * 100 / this.steps) + "%)");
 	}
 }

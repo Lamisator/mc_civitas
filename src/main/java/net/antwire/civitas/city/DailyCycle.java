@@ -32,6 +32,8 @@ public final class DailyCycle {
 
 	public static void run(ServerLevel level, City city, CityManager m) {
 		CivitasConfig cfg = CivitasConfig.get();
+		// a self-governing town's council sets the day's laws first
+		Council.govern(level, city);
 		Policies p = city.policies;
 		String treasury = city.account();
 		long treasuryStart = CommerceApi.balance(treasury);
@@ -172,7 +174,8 @@ public final class DailyCycle {
 			if (p.incomeTax > 0) {
 				mood.put("Taxes", -p.incomeTax * 0.22);
 			}
-			mood.put(r.home >= 0 ? "Home" : "Homeless", r.home >= 0 ? 6.0 : -12.0);
+			Building home = city.building(r.home);
+			mood.put(r.home >= 0 ? "Home" : "Homeless", r.home >= 0 ? 6.0 + (home == null ? 0 : 3.0 * (home.tier - 1)) : -12.0);
 			if (balance > 10000) {
 				mood.put("Savings", 5.0);
 			} else if (balance < 500) {

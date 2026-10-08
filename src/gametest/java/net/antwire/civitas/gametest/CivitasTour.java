@@ -171,6 +171,9 @@ public class CivitasTour implements FabricClientGameTest {
 			if (run("barracks")) {
 				this.barracksScenes(context, sp, cityId, center);
 			}
+			if (run("tiers")) {
+				this.tierScenes(context, sp, cityId, center);
+			}
 
 			// ---- a working day
 			if (run("work")) {
@@ -431,6 +434,128 @@ public class CivitasTour implements FabricClientGameTest {
 		String[] r = reroute.split(" ");
 		check("earth in the doorway is cleared", !reroute.startsWith("FAIL") && Integer.parseInt(r[0]) >= 2, reroute);
 		check("a wall across the way is walked around", !reroute.startsWith("FAIL") && r[1].equals("true") && r[2].equals("true") && r[3].equals("-"), reroute);
+	}
+
+	/** Photographs a building from the front, a little above. */
+	private void front(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, int id, double dist, double up, String name) {
+		Vec3[] cam = sp.getServer().computeOnServer(server -> {
+			Building b = CityManager.get().city(cityId).building(id);
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			Vec3 c = Vec3.atCenterOf(b.center());
+			Vec3 e = Vec3.atCenterOf(b.entrance());
+			Vec3 from = e.add(Vec3.atLowerCornerOf(front.getUnitVec3i()).scale(dist)).add(Vec3.atLowerCornerOf(front.getClockWise().getUnitVec3i()).scale(dist * 0.45))
+				.add(0, up, 0);
+			return new Vec3[]{from, c.add(0, 2, 0)};
+		});
+		this.look(context, sp, cam[0].x, cam[0].y, cam[0].z, cam[1]);
+		context.waitTicks(40);
+		shot(context, name);
+	}
+
+	/** An old house raised to the new plans, then the town hall and every building to tier 2 and tier 3. */
+	private void tierScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, BlockPos center) {
+		String at = "execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run ";
+		// a house built to the plans from before tiers
+		String legacy = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			c.radius = Math.max(c.radius, 90);
+			Building b = net.antwire.civitas.city.Planner.find(level, c, BuildingType.HOUSE);
+			if (b == null) {
+				return "FAIL no site: " + net.antwire.civitas.city.Planner.lastReason;
+			}
+			BlockPos e = b.entrance();
+			BlockPos rel = net.antwire.civitas.city.LegacyBlueprints.of(BuildingType.HOUSE).mark("entrance");
+			b.origin = e.subtract(rel.rotate(b.rot())).atY(b.origin.getY());
+			b.layout = 0;
+			b.tier = 1;
+			b.id = c.nextBuildingId++;
+			c.buildings.add(b);
+			b.steps = net.antwire.civitas.city.Construction.steps(b).size();
+			CommerceApi.mint(c.account(), 5_000_000, "test grant");
+			return String.valueOf(b.id);
+		});
+		check("an old-style house to upgrade", !legacy.startsWith("FAIL"), legacy);
+		sp.getServer().runCommand(at + "civitas complete");
+		sp.getServer().runCommand(at + "civitas immigrate 6");
+		int houseId = legacy.startsWith("FAIL") ? -1 : Integer.parseInt(legacy);
+		if (houseId > 0) {
+			this.front(context, sp, cityId, houseId, 14, 7, "civitas_tier1_house");
+		}
+		int hallId = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).townHall().id);
+		this.front(context, sp, cityId, hallId, 22, 10, "civitas_tier1_hall");
+		for (int tier = 2; tier <= 3; tier++) {
+			int to = tier;
+			String hall = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				Building h = c.townHall();
+				String why = net.antwire.civitas.city.Townlife.whyNotUpgrade(level, c, h);
+				return why == null ? (net.antwire.civitas.city.Townlife.upgrade(level, c, h) ? "OK" : "refused") : why;
+			});
+			check("town hall to tier " + to, hall.equals("OK"), hall);
+			sp.getServer().runCommand(at + "civitas complete");
+			String all = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				int n = 0;
+				StringBuilder no = new StringBuilder();
+				for (Building b : java.util.List.copyOf(c.buildings)) {
+					if (b.type == BuildingType.TOWN_HALL || b.tier >= to) {
+						continue;
+					}
+					String why = net.antwire.civitas.city.Townlife.whyNotUpgrade(level, c, b);
+					if (why == null && net.antwire.civitas.city.Townlife.upgrade(level, c, b)) {
+						n++;
+					} else {
+						no.append(b.type.id()).append(": ").append(why).append("; ");
+					}
+				}
+				return n + " " + no;
+			});
+			sp.getServer().runCommand(at + "civitas complete");
+			String result = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				int at2 = 0;
+				StringBuilder bad = new StringBuilder();
+				for (Building b : c.buildings) {
+					if (b.tier == to) {
+						at2++;
+					}
+					String why = b.complete ? net.antwire.civitas.city.Access.rooms(level, b) : null;
+					if (why != null) {
+						bad.append(b.type.id()).append(" ").append(b.tier).append(": ").append(why).append("; ");
+					}
+				}
+				return at2 + " of " + c.buildings.size() + " at tier " + to + (bad.isEmpty() ? " | all enterable" : " | " + bad);
+			});
+			check("buildings raised to tier " + to, !all.startsWith("0 "), all);
+			check("tier " + to + " buildings can be entered", result.endsWith("all enterable"), result);
+			if (houseId > 0) {
+				this.front(context, sp, cityId, houseId, 16, 8, "civitas_tier" + to + "_house");
+			}
+			this.front(context, sp, cityId, hallId, 24, 12, "civitas_tier" + to + "_hall");
+		}
+		// inside a grand house: the bedrooms upstairs, and the cellar
+		if (houseId > 0) {
+			Vec3[] up = sp.getServer().computeOnServer(server -> {
+				Building b = CityManager.get().city(cityId).building(houseId);
+				BlockPos bed = b.marks("bed").getLast();
+				Direction front = b.rot().rotate(Direction.SOUTH);
+				BlockPos door = b.mark("door");
+				Vec3 eye = Vec3.atBottomCenterOf(door.relative(front.getOpposite(), 2)).add(0, 8, 0);
+				return new Vec3[]{eye, Vec3.atCenterOf(bed)};
+			});
+			this.look(context, sp, up[0].x, up[0].y, up[0].z, up[1]);
+			context.waitTicks(30);
+			shot(context, "civitas_tier3_house_upstairs");
+		}
+		Vec3 aerial = Vec3.atCenterOf(center);
+		int radius = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).radius);
+		this.look(context, sp, aerial.x - radius * 0.8, aerial.y + radius * 0.7, aerial.z + radius * 0.8, aerial);
+		context.waitTicks(120);
+		shot(context, "civitas_tier3_town");
 	}
 
 	/** Soldiers against zombies at night, then a raid. */

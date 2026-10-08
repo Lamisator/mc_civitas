@@ -40,9 +40,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Access {
 	/** Marks that are not places to walk to: doors themselves, the mine shaft, the barred prison cells. */
-	private static final Set<String> NOT_DESTINATIONS = Set.of("door", "backdoor", "entrance", "shaft", "cell", "cellbed", "bell");
+	private static final Set<String> NOT_DESTINATIONS = Set.of("door", "backdoor", "entrance", "shaft", "cell", "cellbed", "bell", "rack");
 	private static final int MAX_FILL = 3;
-	private static final int MAX_NODES = 60000;
+	private static final int MAX_NODES = 25000;
 
 	private Access() {
 	}
@@ -165,8 +165,8 @@ public final class Access {
 	 * Walks the blueprint from its entrance and lists every mark nobody could get to (empty when the building works).
 	 * Outside the blueprint is taken to be level open ground.
 	 */
-	public static List<String> lint(BuildingType type) {
-		Blueprint bp = Blueprints.of(type);
+	public static List<String> lint(BuildingType type, int tier) {
+		Blueprint bp = Blueprints.of(type, tier);
 		BlockPos start = bp.mark("entrance");
 		if (start == null) {
 			start = new BlockPos(bp.w / 2, 1, bp.d);
@@ -180,7 +180,7 @@ public final class Access {
 			for (Direction dir : Direction.Plane.HORIZONTAL) {
 				for (int dy = 1; dy >= -2; dy--) {
 					BlockPos n = p.offset(dir.getStepX(), dy, dir.getStepZ());
-					if (n.getX() < -2 || n.getZ() < -2 || n.getX() > bp.w + 1 || n.getZ() > bp.d + 1 || n.getY() < 1 || n.getY() >= bp.h) {
+					if (n.getX() < -2 || n.getZ() < -2 || n.getX() > bp.w + 1 || n.getZ() > bp.d + 1 || n.getY() < bp.minY() + 1 || n.getY() >= bp.h) {
 						continue;
 					}
 					// up a step needs head room over the start, down needs room to drop through
@@ -208,7 +208,7 @@ public final class Access {
 			}
 			for (BlockPos m : e.getValue()) {
 				if (!near(seen, m)) {
-					out.add(type.id() + ": " + e.getKey() + " at " + m.getX() + " " + m.getY() + " " + m.getZ() + " can't be reached");
+					out.add(type.id() + " tier " + tier + ": " + e.getKey() + " at " + m.getX() + " " + m.getY() + " " + m.getZ() + " can't be reached");
 				}
 			}
 		}
@@ -233,7 +233,9 @@ public final class Access {
 	public static List<String> lintAll() {
 		List<String> all = new ArrayList<>();
 		for (BuildingType t : BuildingType.values()) {
-			all.addAll(lint(t));
+			for (int tier = 1; tier <= Blueprints.TIERS; tier++) {
+				all.addAll(lint(t, tier));
+			}
 		}
 		for (String s : all) {
 			Civitas.LOGGER.warn("Blueprint: {}", s);
@@ -283,23 +285,36 @@ public final class Access {
 	}
 
 	/** What walking a column at ground height y takes: -1 impossible, else the extra effort; fills and cuts are collected. */
-	private static double effort(ServerLevel level, List<Building> buildings, int x, int y, int z, @Nullable List<BlockPos> fills,
+	/** Which building's plot each column belongs to (worked out once per search). */
+	private static Map<Long, Building> plots(List<Building> buildings) {
+		Map<Long, Building> out = new HashMap<>();
+		for (Building b : buildings) {
+			var box = b.bounds();
+			for (int x = (int) box.minX; x < (int) box.maxX; x++) {
+				for (int z = (int) box.minZ; z < (int) box.maxZ; z++) {
+					out.putIfAbsent(BlockPos.asLong(x, 0, z), b);
+				}
+			}
+		}
+		return out;
+	}
+
+	private static double effort(ServerLevel level, Map<Long, Building> plots, int x, int y, int z, @Nullable List<BlockPos> fills,
 		@Nullable List<BlockPos> cuts) {
 		double cost = 0;
 		BlockState bpFloor = null;
 		BlockState bpFeet = null;
 		BlockState bpHeadS = null;
 		boolean dictated = false;
-		for (Building b : buildings) {
-			if (!inside(b, x, z)) {
-				continue;
-			}
+		Building owner = plots.get(BlockPos.asLong(x, 0, z));
+		for (Building b : owner == null ? List.<Building>of() : List.of(owner)) {
 			// on a building's land only at its floor level, and only where its blueprint leaves room
 			if (y != b.origin.getY()) {
 				return -1;
 			}
 			BlockPos rel = local(b, new BlockPos(x, y, z));
-			Blueprint bp = b.blueprint();
+			// plan the way round what the building will become, not just what stands
+			Blueprint bp = b.layout == 0 ? b.blueprint() : Blueprints.of(b.type, Blueprints.TIERS);
 			bpFloor = bp.get(rel.getX(), 0, rel.getZ());
 			bpFeet = bp.get(rel.getX(), 1, rel.getZ());
 			bpHeadS = bp.get(rel.getX(), 2, rel.getZ());
@@ -376,9 +391,19 @@ public final class Access {
 	 * ground), over the terrain as it is and the other buildings as they will be. Null when there is none.
 	 */
 	public static @Nullable Route route(ServerLevel level, City city, Building b) {
-		List<Building> buildings = new ArrayList<>(city.buildings);
-		if (!buildings.contains(b)) {
-			buildings.add(b);
+		List<Building> list = new ArrayList<>(city.buildings);
+		if (!list.contains(b)) {
+			list.add(b);
+		}
+		Map<Long, Building> buildings = plots(list);
+		// the town's roads: reaching one of them is as good as reaching the square
+		java.util.Set<Long> roads = new HashSet<>();
+		for (Building o : city.buildings) {
+			if (o != b && o.complete || o != b && !o.approach.isEmpty()) {
+				for (BlockPos p : o.approach) {
+					roads.add(p.asLong());
+				}
+			}
 		}
 		BlockPos entrance = b.entrance();
 		Node start = new Node(entrance.getX(), entrance.getY() - 1, entrance.getZ());
@@ -415,7 +440,8 @@ public final class Access {
 			}
 			boolean arrived = outward
 				? !(n.x >= own.minX && n.x < own.maxX && n.z >= own.minZ && n.z < own.maxZ) && Math.abs(n.x - goal.getX()) + Math.abs(n.z - goal.getZ()) <= 4
-				: Math.abs(n.x - goal.getX()) + Math.abs(n.z - goal.getZ()) <= 1 && Math.abs(n.y + 1 - goal.getY()) <= 1;
+				: Math.abs(n.x - goal.getX()) + Math.abs(n.z - goal.getZ()) <= 1 && Math.abs(n.y + 1 - goal.getY()) <= 1
+					|| n != start && roads.contains(n.key());
 			if (arrived) {
 				end = n;
 				break;
@@ -506,7 +532,7 @@ public final class Access {
 		String blocked = null;
 		Blueprint bp = b.blueprint();
 		// rooms and doorways: whatever the blueprint keeps free must be free
-		for (int y = 1; y < bp.h; y++) {
+		for (int y = bp.minY() + 1; y < bp.h; y++) {
 			for (int z = 0; z < bp.d; z++) {
 				for (int x = 0; x < bp.w; x++) {
 					BlockState want = bp.get(x, y, z);
@@ -669,7 +695,7 @@ public final class Access {
 			for (Direction dir : Direction.Plane.HORIZONTAL) {
 				for (int dy = 1; dy >= -2; dy--) {
 					BlockPos n = p.offset(dir.getStepX(), dy, dir.getStepZ());
-					if (n.getX() < box.minX || n.getX() >= box.maxX || n.getZ() < box.minZ || n.getZ() >= box.maxZ || n.getY() < box.minY - 3 || n.getY() > box.maxY) {
+					if (n.getX() < box.minX || n.getX() >= box.maxX || n.getZ() < box.minZ || n.getZ() >= box.maxZ || n.getY() < box.minY - 1 || n.getY() > box.maxY) {
 						continue;
 					}
 					if (dy == 1 && !headRoom(level.getBlockState(p.above(2)))) {

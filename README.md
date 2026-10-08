@@ -89,6 +89,39 @@ Shop counters are real **Commerce** shop counters, so players buy bread, steak, 
 ![The smithy](docs/img/blacksmith.jpg)
 ![The mine's shaft head: the staircase goes down to the galleries](docs/img/mine.jpg)
 
+### Three tiers
+
+Every building comes in three tiers. A new building is planned on a plot big enough for its third tier. The first tier stands at the front of that plot, and each upgrade grows the building backwards and sideways around the same front door.
+
+| | Tier I | Tier II | Tier III |
+|---|---|---|---|
+| Size | small, one storey | bigger, two storeys | much bigger, two or three storeys, often a cellar |
+| Look | timber and plaster | lights by the door | stone ground floor, slate roof, shutters |
+| Houses | 4 beds | 6 beds, bedrooms upstairs | 8 beds on two upper floors, a cellar for provisions |
+| Workplaces | | one more worker, work 20 % brisker | one more worker again, 40 % brisker |
+| Barracks | 4 soldiers | 6 | 8, armoury in the cellar |
+
+Some of the other upgrades:
+- the town hall gets a council chamber, then an archive, a treasury cellar and a clock tower
+- the tavern gets guest rooms and a beer cellar
+- the bank gets a vault
+- the prison gets cells on every floor
+- the butcher gets a cold store
+- the mine gets a winding wheel
+- the farm gets bigger fields, and at tier III a barn
+
+A home in a grander house also makes its residents happier.
+
+Each floor is four blocks high. A staircase along the inside of the side wall switches back from floor to floor, with railings round the stairwell.
+
+**Unlocking.** The **town hall** goes up first: to tier II at 12 citizens, to tier III at 24 (`tier2Population`, `tier3Population`). Every other building can then be raised to the town hall's tier. New buildings are planned at the town hall's tier straight away. Each tier doubles the planning fee.
+
+**Upgrading.** In the ledger's Buildings tab, click **↑ tier II** or **↑ tier III**. Hovering shows the cost, or why it isn't possible yet. The town council also upgrades by itself when nothing else is needed: the town hall first, then homes if beds are short, then the rest.
+
+The builders take down only what changes. Chests and counters that stay keep their contents. Whatever comes down goes to the town's stockpile, including the contents of chests and barrels.
+
+Buildings built before tiers (Civitas 1.1) keep their old shape until their first upgrade. Then the new plot is laid out around their front door, if nothing stands in the way.
+
 ### Getting in
 
 Every building can be entered and used. The engine checks this at three points:
@@ -223,6 +256,7 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `/civitas complete` | operators: finish all construction at once |
 | `/civitas day` | operators: let a day pass |
 | `/civitas immigrate <n>` | operators: settlers arrive |
+| `/civitas upgrade <type>` | operators: raise a building of that type one tier |
 | `/civitas raid` | operators: raiders attack the town you're in |
 | `/civitas access` | operators: check (and repair) access to every building now |
 
@@ -245,13 +279,15 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `mineDepthY` | 0 | how deep the mines dig |
 | `missileExportPrice` | 450 | what the state pays for a missile |
 | `importFood` | true | rations come from the market if the bakery is empty |
+| `tier2Population` | 12 | citizens before the town hall can go to tier II |
+| `tier3Population` | 24 | ... and to tier III |
 | `monstersAttackCitizens` | true | zombies, skeletons and illagers hunt citizens |
 | `raidChance` | 0.08 | chance a day of a raid on a town of 8+ (0 = never) |
 
 ## Building from source
 
 ```
-./gradlew build                                    # build/libs/civitas-1.1.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.0.jar)
+./gradlew build                                    # build/libs/civitas-1.2.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.0.jar)
 ./gradlew runClientGameTest -PwithArsenal          # founds a town, checks access, fights, governs it well and badly, takes screenshots
 ```
 

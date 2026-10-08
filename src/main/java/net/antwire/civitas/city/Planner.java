@@ -20,6 +20,10 @@ import org.jspecify.annotations.Nullable;
 public final class Planner {
 	/** Why the last {@link #fit} failed (for messages and debugging). */
 	public static String lastReason = "";
+	/** Route searches made while planning, failed ones and their time (for the log). */
+	public static int routes;
+	public static int routeFails;
+	public static long routeNanos;
 
 	private Planner() {
 	}
@@ -36,12 +40,16 @@ public final class Planner {
 
 	/** A building of the given type centred on (x, z), front towards {@code front}, floor at the ground; null if it doesn't fit. */
 	public static @Nullable Building fit(ServerLevel level, City city, BuildingType type, int x, int z, Direction front, int maxStep) {
-		Blueprint bp = Blueprints.of(type);
+		// the plot is the grandest tier's; the first tier needs flat dry land, the rest only nobody's builds in the way
+		Blueprint bp = Blueprints.of(type, Blueprints.TIERS);
+		Blueprint first = Blueprints.of(type, 1);
 		int rot = rotationFacing(front);
 		Rotation r = Rotation.values()[rot];
 		BlockPos half = new BlockPos(bp.w / 2, 0, bp.d / 2).rotate(r);
 		BlockPos origin0 = new BlockPos(x - half.getX(), 0, z - half.getZ());
 		Building b = new Building(0, type, origin0, rot);
+		b.layout = 1;
+		b.tier = Blueprints.TIERS;
 		// ground heights over the footprint
 		Map<Integer, Integer> counts = new HashMap<>();
 		int min = Integer.MAX_VALUE;
@@ -51,10 +59,11 @@ public final class Planner {
 				if (bp.get(bx, 0, bz) == null && bp.get(bx, 1, bz) == null) {
 					continue;
 				}
+				boolean core = first.get(bx, 0, bz) != null || first.get(bx, 1, bz) != null;
 				BlockPos col = b.world(bx, 0, bz);
 				int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col.getX(), col.getZ()) - 1;
 				BlockState ground = level.getBlockState(new BlockPos(col.getX(), top, col.getZ()));
-				if (!ground.getFluidState().isEmpty() || !Construction.natural(ground)) {
+				if (core && !ground.getFluidState().isEmpty() || !Construction.natural(ground)) {
 					lastReason = "ground at " + col.getX() + " " + top + " " + col.getZ() + " is " + ground.getBlock().getDescriptionId();
 					return null;
 				}
@@ -64,6 +73,9 @@ public final class Planner {
 						lastReason = "something built at " + col.getX() + " " + (top + up) + " " + col.getZ() + ": " + above.getBlock().getDescriptionId();
 						return null;
 					}
+				}
+				if (!core) {
+					continue;
 				}
 				min = Math.min(min, top);
 				max = Math.max(max, top);
@@ -77,8 +89,9 @@ public final class Planner {
 		int floor = counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(min);
 		b.origin = new BlockPos(origin0.getX(), floor, origin0.getZ());
 		AABB box = b.bounds();
+		b.tier = 1;
 		for (Building o : city.buildings) {
-			if (o.bounds().inflate(3, 0, 3).intersects(box.inflate(0, 64, 0))) {
+			if (o.bounds().inflate(2, 0, 2).intersects(box.inflate(0, 64, 0))) {
 				lastReason = "overlaps the " + o.type.title;
 				return null;
 			}
@@ -91,8 +104,12 @@ public final class Planner {
 			}
 		}
 		// and it must have a way in itself
+		long t0 = System.nanoTime();
 		Access.Route route = Access.route(level, city, b);
+		routeNanos += System.nanoTime() - t0;
+		routes++;
 		if (route == null) {
+			routeFails++;
 			lastReason = "no way from the door to the square: " + Access.why;
 			return null;
 		}
@@ -104,7 +121,7 @@ public final class Planner {
 	/** Searches the rings around the centre for a site; null if the town has no room left. */
 	public static @Nullable Building find(ServerLevel level, City city, BuildingType type) {
 		BlockPos c = city.center;
-		Blueprint bp = Blueprints.of(type);
+		Blueprint bp = Blueprints.of(type, Blueprints.TIERS);
 		int size = Math.max(bp.w, bp.d);
 		List<int[]> ring = new ArrayList<>();
 		for (int r = 8 + size / 2; r <= city.radius - size / 2; r += 3) {

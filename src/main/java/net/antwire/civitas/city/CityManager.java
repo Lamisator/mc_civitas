@@ -251,16 +251,24 @@ public final class CityManager {
 	}
 
 	public @Nullable Building plan(ServerLevel level, City city, BuildingType type) {
+		Planner.routes = Planner.routeFails = 0;
+		Planner.routeNanos = 0;
 		Building b = Planner.find(level, city, type);
 		// no room left: the town grows outwards
 		while (b == null && city.radius < 112) {
 			city.radius += 12;
 			b = Planner.find(level, city, type);
 		}
+		net.antwire.civitas.Civitas.LOGGER.info("Planning a {}: {} way searches, {} failed ({}), {} ms", type.id(), Planner.routes, Planner.routeFails,
+			Access.why, Planner.routeNanos / 1_000_000);
 		if (b == null) {
 			return null;
 		}
 		b.id = city.nextBuildingId++;
+		// new buildings go up as grand as the town hall allows
+		if (type != BuildingType.TOWN_HALL) {
+			b.tier = city.tier();
+		}
 		city.buildings.add(b);
 		b.steps = Construction.steps(b).size();
 		city.log("Construction of a " + type.title.toLowerCase(java.util.Locale.ROOT) + " planned");
@@ -290,7 +298,7 @@ public final class CityManager {
 			if (level == null) {
 				continue;
 			}
-			if (t % 100 == 0 && CivitasConfig.get().keepTownsLoaded) {
+			if (t % 100 == 0 && city.keepsLoaded()) {
 				int r = (city.radius >> 4) + 2;
 				level.getChunkSource().addTicketWithRadius(ModTickets.TOWN, ChunkPos.containing(city.center), Math.min(r, 8));
 			}

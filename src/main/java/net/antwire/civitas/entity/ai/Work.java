@@ -50,6 +50,11 @@ public final class Work {
 	/** How briskly they work: unhappy, tired people dawdle. */
 	static double pace(City city, CitizenRecord r) {
 		double p = 0.5 + r.happiness / 100.0;
+		// better tools and room in a grander workplace
+		Building w = city.building(r.workplace);
+		if (w != null && r.job != Job.BUILDER) {
+			p *= 1.0 + 0.2 * (w.tier - 1);
+		}
 		if (r.rest < 20) {
 			p *= 0.7;
 		}
@@ -148,7 +153,7 @@ public final class Work {
 
 		@Override
 		protected void run() {
-			if (this.site.complete || !this.city.buildings.contains(this.site)) {
+			if (this.site.complete && !this.site.upgrading() || !this.city.buildings.contains(this.site)) {
 				this.done = true;
 				return;
 			}
@@ -192,7 +197,11 @@ public final class Work {
 				skips++;
 			}
 			if (this.site.progress >= steps.size()) {
-				Townlife.complete(this.level(), this.city, this.site);
+				if (this.site.upgrading()) {
+					Townlife.upgraded(this.level(), this.city, this.site);
+				} else {
+					Townlife.complete(this.level(), this.city, this.site);
+				}
 				this.npc.say("The " + this.site.type.title.toLowerCase() + " is finished!");
 				this.done = true;
 			}

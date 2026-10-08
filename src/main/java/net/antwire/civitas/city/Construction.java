@@ -29,7 +29,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
  */
 public final class Construction {
 	public enum Kind {
-		CLEAR, FOUNDATION, BLOCK, ROAD
+		CLEAR, FOUNDATION, BLOCK, ROAD, DEMOLISH
 	}
 
 	public record Step(Kind kind, BlockPos pos, BlockState state) {
@@ -57,55 +57,138 @@ public final class Construction {
 		return !s.canOcclude() || b instanceof DoorBlock || b instanceof BedBlock;
 	}
 
+	/** Every cell a blueprint defines, in world coordinates, turned the building's way. */
+	static java.util.Map<BlockPos, BlockState> cells(Blueprint bp, BlockPos origin, net.minecraft.world.level.block.Rotation rot) {
+		java.util.Map<BlockPos, BlockState> out = new java.util.LinkedHashMap<>();
+		for (int y = bp.minY(); y < bp.h; y++) {
+			for (int z = 0; z < bp.d; z++) {
+				for (int x = 0; x < bp.w; x++) {
+					BlockState s = bp.get(x, y, z);
+					if (s != null) {
+						out.put(origin.offset(new BlockPos(x, y, z).rotate(rot)), s.rotate(rot));
+					}
+				}
+			}
+		}
+		return out;
+	}
+
 	private static List<Step> plan(Building b) {
-		Blueprint bp = b.blueprint();
+		java.util.Map<BlockPos, BlockState> from = b.upgrading() ? cells(b.blueprint(), b.origin, b.rot()) : java.util.Map.of();
+		java.util.Map<BlockPos, BlockState> to = b.upgrading() ? cells(b.targetBlueprint(), b.targetOrigin(), b.rot()) : cells(b.blueprint(), b.origin, b.rot());
+		List<Step> out = diff(b, from, to);
+		if (!b.upgrading()) {
+			// last, the way to the square: bank up the dips, dig through the banks, tread the path
+			BlockState air = Blocks.AIR.defaultBlockState();
+			java.util.Set<BlockPos> tops = new java.util.HashSet<>(b.approach);
+			for (BlockPos f : b.approachFill) {
+				out.add(new Step(Kind.FOUNDATION, f, (tops.contains(f) ? Blocks.DIRT : Blocks.COBBLESTONE).defaultBlockState()));
+			}
+			for (BlockPos g : b.approach) {
+				out.add(new Step(Kind.CLEAR, g.above(2), air));
+				out.add(new Step(Kind.CLEAR, g.above(), air));
+				out.add(new Step(Kind.ROAD, g, Blocks.DIRT_PATH.defaultBlockState()));
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * From what stands (an older tier, or nothing) to what should: take down what goes or changes (top down), clear the
+	 * new ground of nature, lay foundations where the ground dips, then raise what's new - solid blocks first, then doors,
+	 * beds, panes and lanterns. Whatever stays the same is not touched, so chests keep what is in them.
+	 */
+	private static List<Step> diff(Building b, java.util.Map<BlockPos, BlockState> from, java.util.Map<BlockPos, BlockState> to) {
 		List<Step> out = new ArrayList<>();
 		BlockState air = Blocks.AIR.defaultBlockState();
-		// clear, from above the roof down
-		for (int y = bp.h + 5; y >= 0; y--) {
-			for (int z = 0; z < bp.d; z++) {
-				for (int x = 0; x < bp.w; x++) {
-					// everything the blueprint defines gets cleared first, and whatever grows above the roof
-					if (y >= bp.h || bp.get(x, y, z) != null) {
-						out.add(new Step(Kind.CLEAR, b.world(x, y, z), air));
-					}
-				}
+		// take down
+		List<Step> down = new ArrayList<>();
+		for (java.util.Map.Entry<BlockPos, BlockState> e : from.entrySet()) {
+			BlockState f = e.getValue();
+			BlockState t = to.get(e.getKey());
+			if (!f.isAir() && (t == null || t.isAir() || t.getBlock() != f.getBlock())) {
+				down.add(new Step(Kind.DEMOLISH, e.getKey(), f));
 			}
 		}
-		// foundation under the floor
-		for (int y = -4; y <= -1; y++) {
-			for (int z = 0; z < bp.d; z++) {
-				for (int x = 0; x < bp.w; x++) {
-					BlockState s = bp.get(x, 0, z);
-					if (s != null && !s.isAir()) {
-						out.add(new Step(Kind.FOUNDATION, b.world(x, y, z), Blocks.COBBLESTONE.defaultBlockState()));
-					}
-				}
+		// clear the new ground, and whatever grows above the new parts
+		java.util.Map<Long, int[]> columns = new java.util.HashMap<>();
+		int top = Integer.MIN_VALUE;
+		for (java.util.Map.Entry<BlockPos, BlockState> e : to.entrySet()) {
+			BlockPos p = e.getKey();
+			top = Math.max(top, p.getY());
+			if (e.getValue().isAir()) {
+				continue;
+			}
+			long key = BlockPos.asLong(p.getX(), 0, p.getZ());
+			int[] c = columns.computeIfAbsent(key, k -> new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE});
+			c[0] = Math.min(c[0], p.getY());
+			c[1] = Math.max(c[1], p.getY());
+		}
+		java.util.Set<Long> oldColumns = new java.util.HashSet<>();
+		for (java.util.Map.Entry<BlockPos, BlockState> e : from.entrySet()) {
+			if (!e.getValue().isAir()) {
+				oldColumns.add(BlockPos.asLong(e.getKey().getX(), 0, e.getKey().getZ()));
 			}
 		}
-		// solid blocks, then the fittings
+		List<Step> clear = new ArrayList<>();
+		for (java.util.Map.Entry<BlockPos, BlockState> e : to.entrySet()) {
+			if (!from.containsKey(e.getKey())) {
+				// a cellar going in under the old building: its foundation stones come out first
+				if (e.getKey().getY() < b.origin.getY() && !from.isEmpty()) {
+					down.add(new Step(Kind.DEMOLISH, e.getKey(), Blocks.COBBLESTONE.defaultBlockState()));
+				}
+				clear.add(new Step(Kind.CLEAR, e.getKey(), air));
+			}
+		}
+		for (java.util.Map.Entry<Long, int[]> c : columns.entrySet()) {
+			if (oldColumns.contains(c.getKey())) {
+				continue;
+			}
+			BlockPos col = BlockPos.of(c.getKey());
+			for (int y = top + 1; y <= top + 5; y++) {
+				clear.add(new Step(Kind.CLEAR, new BlockPos(col.getX(), y, col.getZ()), air));
+			}
+		}
+		down.sort((p, q) -> Integer.compare(q.pos().getY(), p.pos().getY()));
+		out.addAll(down);
+		clear.sort((p, q) -> Integer.compare(q.pos().getY(), p.pos().getY()));
+		out.addAll(clear);
+		// foundations under new floors (never across the mine's staircase)
+		BlockPos shaft = b.type == BuildingType.MINE ? b.mark("shaft") : null;
+		net.minecraft.core.Direction dig = b.rot().rotate(net.minecraft.core.Direction.NORTH);
+		for (java.util.Map.Entry<Long, int[]> c : columns.entrySet()) {
+			BlockPos col = BlockPos.of(c.getKey());
+			int low = c.getValue()[0];
+			// only under floors - never under an eave, a sign or a lantern over the doorstep
+			if (low > b.origin.getY() || oldColumns.contains(c.getKey()) && from.containsKey(new BlockPos(col.getX(), low, col.getZ()))) {
+				continue;
+			}
+			if (shaft != null) {
+				int dx = col.getX() - shaft.getX();
+				int dz = col.getZ() - shaft.getZ();
+				int ahead = dx * dig.getStepX() + dz * dig.getStepZ();
+				int aside = Math.abs(dx * dig.getStepZ() - dz * dig.getStepX());
+				if (ahead >= -1 && aside <= 1) {
+					continue;
+				}
+			}
+			for (int y = low - 1; y >= low - 4; y--) {
+				out.add(new Step(Kind.FOUNDATION, new BlockPos(col.getX(), y, col.getZ()), Blocks.COBBLESTONE.defaultBlockState()));
+			}
+		}
+		// raise
 		for (int pass = 0; pass < 2; pass++) {
-			for (int y = 0; y < bp.h; y++) {
-				for (int z = 0; z < bp.d; z++) {
-					for (int x = 0; x < bp.w; x++) {
-						BlockState s = bp.get(x, y, z);
-						if (s == null || s.isAir() || attachment(s) != (pass == 1)) {
-							continue;
-						}
-						out.add(new Step(Kind.BLOCK, b.world(x, y, z), s.rotate(b.rot())));
-					}
+			List<Step> up = new ArrayList<>();
+			for (java.util.Map.Entry<BlockPos, BlockState> e : to.entrySet()) {
+				BlockState t = e.getValue();
+				BlockState f = from.get(e.getKey());
+				if (t.isAir() || attachment(t) != (pass == 1) || f != null && f.getBlock() == t.getBlock()) {
+					continue;
 				}
+				up.add(new Step(Kind.BLOCK, e.getKey(), t));
 			}
-		}
-		// last, the way to the square: bank up the dips, dig through the banks, tread the path
-		java.util.Set<BlockPos> tops = new java.util.HashSet<>(b.approach);
-		for (BlockPos f : b.approachFill) {
-			out.add(new Step(Kind.FOUNDATION, f, (tops.contains(f) ? Blocks.DIRT : Blocks.COBBLESTONE).defaultBlockState()));
-		}
-		for (BlockPos g : b.approach) {
-			out.add(new Step(Kind.CLEAR, g.above(2), air));
-			out.add(new Step(Kind.CLEAR, g.above(), air));
-			out.add(new Step(Kind.ROAD, g, Blocks.DIRT_PATH.defaultBlockState()));
+			up.sort((p, q) -> Integer.compare(p.pos().getY(), q.pos().getY()));
+			out.addAll(up);
 		}
 		return out;
 	}
@@ -130,6 +213,7 @@ public final class Construction {
 		BlockState now = level.getBlockState(step.pos());
 		return switch (step.kind()) {
 			case CLEAR -> !now.isAir() && now.getDestroySpeed(level, step.pos()) >= 0 && level.getBlockEntity(step.pos()) == null && natural(now);
+			case DEMOLISH -> now.getBlock() == step.state().getBlock();
 			case FOUNDATION -> now.canBeReplaced() || !now.getFluidState().isEmpty();
 			case BLOCK, ROAD -> !now.is(step.state().getBlock());
 		};
@@ -140,6 +224,14 @@ public final class Construction {
 		BlockPos pos = step.pos();
 		BlockState now = level.getBlockState(pos);
 		switch (step.kind()) {
+			case DEMOLISH -> {
+				if (now.getBlock() != step.state().getBlock()) {
+					return Result.SKIPPED;
+				}
+				demolish(level, city, pos, now);
+				level.playSound(null, pos, now.getSoundType().getBreakSound(), SoundSource.BLOCKS, 0.7F, 1.0F);
+				return Result.PLACED;
+			}
 			case CLEAR -> {
 				if (now.isAir()) {
 					return Result.SKIPPED;
@@ -198,11 +290,37 @@ public final class Construction {
 		return Result.SKIPPED;
 	}
 
+	/**
+	 * Takes down a block of an older tier: what was in a chest or barrel goes to the town's stockpile, and so does the
+	 * block itself (it will be used again). Nothing spills on the floor.
+	 */
+	static void demolish(ServerLevel level, City city, BlockPos pos, BlockState now) {
+		if (level.getBlockEntity(pos) instanceof net.minecraft.world.Container c) {
+			for (int i = 0; i < c.getContainerSize(); i++) {
+				ItemStack st = c.getItem(i);
+				if (!st.isEmpty()) {
+					city.addStock(BuiltInRegistries.ITEM.getKey(st.getItem()).toString(), st.getCount());
+				}
+			}
+			c.clearContent();
+		}
+		Item item = now.getBlock().asItem();
+		if (item != Items.AIR && city != null) {
+			city.addStock(BuiltInRegistries.ITEM.getKey(item).toString(), 1);
+		}
+		level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS);
+	}
+
 	/** Carries out a step at once and for free (the complete command): the same rules as builders, no materials. */
-	public static void applyFree(ServerLevel level, Step step) {
+	public static void applyFree(ServerLevel level, City city, Step step) {
 		BlockPos pos = step.pos();
 		BlockState now = level.getBlockState(pos);
 		switch (step.kind()) {
+			case DEMOLISH -> {
+				if (now.getBlock() == step.state().getBlock()) {
+					demolish(level, city, pos, now);
+				}
+			}
 			case CLEAR -> {
 				if (!now.isAir() && natural(now) && level.getBlockEntity(pos) == null && now.getDestroySpeed(level, pos) >= 0) {
 					Access.dig(level, pos, Block.UPDATE_CLIENTS);
@@ -287,9 +405,15 @@ public final class Construction {
 
 	/** The cost of the materials of a blueprint, in cents (for the planning screen). */
 	public static long estimate(BuildingType type) {
-		Blueprint bp = Blueprints.of(type);
+		return estimate(type, 1);
+	}
+
+	/** Materials and the planning fee for a new building of this tier, in cents. */
+	public static long estimate(BuildingType type, int tier) {
+		Blueprint bp = Blueprints.of(type, tier);
 		long sum = 0;
-		for (int y = 0; y < bp.h; y++) {
+		int floor = 0;
+		for (int y = bp.minY(); y < bp.h; y++) {
 			for (int z = 0; z < bp.d; z++) {
 				for (int x = 0; x < bp.w; x++) {
 					BlockState s = bp.get(x, y, z);
@@ -298,11 +422,37 @@ public final class Construction {
 						if (item != Items.AIR) {
 							sum += Materials.price(item);
 						}
+						if (y == bp.minY()) {
+							floor++;
+						}
 					}
 				}
 			}
 		}
-		return sum + (long) type.fee * 100 + bp.w * bp.d * 4L * Materials.price(Items.COBBLESTONE) / 4;
+		return sum + fee(type, tier) + floor * Materials.price(Items.COBBLESTONE);
+	}
+
+	/** The planning fee: the type's fee, doubled for each tier above the first. */
+	public static long fee(BuildingType type, int tier) {
+		return (long) type.fee * 100 * (1L << (Math.max(1, tier) - 1));
+	}
+
+	/** What upgrading a building to the next tier costs: the new materials (less what comes down) and the fee, in cents. */
+	public static long upgradeCost(Building b, int tier, BlockPos newOrigin) {
+		java.util.Map<BlockPos, BlockState> from = cells(b.blueprint(), b.origin, b.rot());
+		java.util.Map<BlockPos, BlockState> to = cells(Blueprints.of(b.type, tier), newOrigin, b.rot());
+		long sum = 0;
+		for (java.util.Map.Entry<BlockPos, BlockState> e : to.entrySet()) {
+			BlockState t = e.getValue();
+			BlockState f = from.get(e.getKey());
+			if (!t.isAir() && (f == null || f.getBlock() != t.getBlock())) {
+				Item item = t.getBlock().asItem();
+				if (item != Items.AIR) {
+					sum += Materials.price(item);
+				}
+			}
+		}
+		return sum + fee(b.type, tier);
 	}
 
 	static String treasury(City city) {

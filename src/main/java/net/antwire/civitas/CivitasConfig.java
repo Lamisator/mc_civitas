@@ -39,6 +39,8 @@ public class CivitasConfig {
 	public double missileExportPrice = 450;
 	/** Days a town needs no food production before it imports bread for its citizens at market price. */
 	public boolean importFood = true;
+	/** When the world's clock is stopped (gamerule advance_time false), towns keep their own day and night. */
+	public boolean ownClockWhenFrozen = true;
 	/** Zombies, skeletons and illagers go for citizens as they do for villagers (what the barracks is for). */
 	public boolean monstersAttackCitizens = true;
 	/** Chance per day that raiders attack a town of 8 or more (0 = never). */

@@ -267,12 +267,35 @@ public final class CityManager {
 		return b;
 	}
 
+	/**
+	 * The towns' clock. Normally the world's; when the world's clock stands still (gamerule advance_time off), the towns
+	 * keep their own from the game's tick counter, so days still pass: wages, rent, meals, sleep.
+	 */
+	static long clock(Level level) {
+		long world = level.getOverworldClockTime();
+		if (CivitasConfig.get().ownClockWhenFrozen && level instanceof net.minecraft.server.level.ServerLevel sl
+			&& !sl.getServer().overworld().getGameRules().get(net.minecraft.world.level.gamerules.GameRules.ADVANCE_TIME)) {
+			long ticks = sl.getServer().overworld().getGameTime();
+			// runs on from where the world's clock stopped; /time set moves it there again
+			if (frozenWorld != world || frozenSince < 0) {
+				frozenWorld = world;
+				frozenSince = ticks;
+			}
+			return world + (ticks - frozenSince);
+		}
+		frozenSince = -1;
+		return world;
+	}
+
+	private static long frozenWorld;
+	private static long frozenSince = -1;
+
 	public static long currentDay(Level level) {
-		return Math.floorDiv(level.getOverworldClockTime(), 24000L);
+		return Math.floorDiv(clock(level), 24000L);
 	}
 
 	public static int timeOfDay(Level level) {
-		return (int) Math.floorMod(level.getOverworldClockTime(), 24000L);
+		return (int) Math.floorMod(clock(level), 24000L);
 	}
 
 	// ------------------------------------------------------------------ ticking

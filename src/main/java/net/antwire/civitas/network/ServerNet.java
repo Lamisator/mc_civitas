@@ -154,6 +154,9 @@ public final class ServerNet {
 			row.z = e.getZ();
 			d.buildings.add(row);
 		}
+		for (net.antwire.civitas.city.Supply.Line line : net.antwire.civitas.city.Supply.report(level, c)) {
+			d.supply.add(line.level() + "|" + line.text());
+		}
 		for (int i = 0; i < Math.min(40, c.log.size()); i++) {
 			d.log.add(c.log.get(i));
 		}

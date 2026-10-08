@@ -283,6 +283,7 @@ public final class DailyCycle {
 			}
 		}
 		Townlife.updatePrices(level, city);
+		Supply.daily(level, city);
 		net.antwire.civitas.entity.ai.Military.daily(level, city);
 		// can everyone still get in everywhere?
 		for (Building b : List.copyOf(city.buildings)) {

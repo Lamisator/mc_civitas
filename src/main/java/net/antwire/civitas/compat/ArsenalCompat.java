@@ -25,8 +25,9 @@ final class ArsenalCompat {
 		return ArsenalApi.reloadTicks(gun);
 	}
 
-	static boolean fire(LivingEntity shooter, String gun, float yaw, float pitch, float inaccuracy) {
-		return ArsenalApi.fire(shooter, gun, yaw, pitch, inaccuracy);
+	static boolean fire(LivingEntity shooter, String gun, float yaw, float pitch, float inaccuracy,
+		java.util.function.Predicate<net.minecraft.world.entity.Entity> spare) {
+		return ArsenalApi.fire(shooter, gun, yaw, pitch, inaccuracy, spare);
 	}
 
 	static void reloadSound(LivingEntity shooter, boolean in) {

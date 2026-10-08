@@ -225,6 +225,10 @@ public class CitizenEntity extends PathfinderMob {
 				return false;
 			}
 		}
+		City own = this.city();
+		if (own != null && source.getEntity() instanceof CitizenEntity c && c != this && own.id.equals(c.cityId()) && c.job() == Job.SOLDIER) {
+			return false;
+		}
 		boolean hurt = super.hurtServer(level, source, amount);
 		City city = this.city();
 		if (hurt && city != null) {

@@ -13,7 +13,7 @@ A Fabric mod for **Minecraft 26.3**. Found a town and settlers arrive. They buil
 - Minecraft 26.3, Fabric loader 0.19.5+, Fabric API
 - **Commerce** 1.0.0+: the currency, bank accounts and shop counters
 - optional: **RedButton**, so the ordnance factory builds real missiles
-- optional: **Arsenal** 1.1.0+, so soldiers carry M4A1 carbines, plate carriers and combat helmets
+- optional: **Arsenal** 1.1.1+, so soldiers carry M4A1 carbines, plate carriers and combat helmets
 
 ## Founding a town
 
@@ -127,7 +127,9 @@ Enemies are:
 
 Creative-mode players are never shot at.
 
-Soldiers keep a friend out of their line of fire: they step aside rather than shoot through a citizen. They use the rifle butt when an enemy is close.
+Soldiers keep a friend out of their line of fire: they step aside rather than shoot through a citizen. Their rounds never hurt the town's own people or a peaceful visitor, even when a shot misses or goes through its target. They use the rifle butt when an enemy is close.
+
+The governor and the deputies are never treated as enemies. If they strike a citizen, the log notes it and the guards look away.
 
 Townsfolk run from danger that comes within 10 blocks. Sheriffs and soldiers stand their ground.
 
@@ -137,6 +139,21 @@ Soldiers are paid by the treasury, at 1.4 times the base wage.
 
 ![The barracks: soldiers on the parade ground, targets and the alarm bell at the sides](docs/img/barracks.jpg)
 ![Inside: bunks and footlockers, the map table under the colours, weapon racks and ammunition crates; the night watch asleep](docs/img/barracks_inside.jpg)
+
+## Is everyone fed?
+
+The ledger's **Supply** page checks the town's food link by link and says what to do about each gap:
+- how many went hungry yesterday
+- what's on the bakery and butcher counters, against what the town eats in a day (about two and a half loaves' worth per citizen)
+- fields, farmers and open farm jobs, and roughly how much bread the wheat makes
+- whether the bakery has a baker and wheat, and whether it can pay the farm for more
+- the butcher's herd and raw meat, and whether it can afford new livestock
+- how many citizens can't afford even the cheapest food, and how to fix it: wages, prices, a basic income or free rations
+- whether settlers keep arriving while people go hungry
+
+When people go hungry, the governor gets a message each morning.
+
+**A frozen world clock.** If the server stops time (gamerule `advance_time` false), days would never end: no wages, no rent, no counted meals, and people at work forever. Towns then keep their own clock, running on from where the world's clock stopped, with its own day and night (`ownClockWhenFrozen`).
 
 ## Governing
 
@@ -245,13 +262,14 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `mineDepthY` | 0 | how deep the mines dig |
 | `missileExportPrice` | 450 | what the state pays for a missile |
 | `importFood` | true | rations come from the market if the bakery is empty |
+| `ownClockWhenFrozen` | true | towns keep their own day and night when the world clock is stopped |
 | `monstersAttackCitizens` | true | zombies, skeletons and illagers hunt citizens |
 | `raidChance` | 0.08 | chance a day of a raid on a town of 8+ (0 = never) |
 
 ## Building from source
 
 ```
-./gradlew build                                    # build/libs/civitas-1.1.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.0.jar)
+./gradlew build                                    # build/libs/civitas-1.1.1.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.1.jar)
 ./gradlew runClientGameTest -PwithArsenal          # founds a town, checks access, fights, governs it well and badly, takes screenshots
 ```
 

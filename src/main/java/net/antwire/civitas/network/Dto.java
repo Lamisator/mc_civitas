@@ -92,6 +92,8 @@ public final class Dto {
 		public Map<String, Integer> stockpile = new LinkedHashMap<>();
 		public List<Plan> plans = new ArrayList<>();
 		public long baseWage;
+		/** The supply check: "level|text" lines (0 fine, 1 warning, 2 trouble). */
+		public List<String> supply = new ArrayList<>();
 	}
 
 	public static class Citizen {

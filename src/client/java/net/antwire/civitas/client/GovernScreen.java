@@ -26,7 +26,7 @@ import net.minecraft.world.item.ItemStack;
 public class GovernScreen extends Screen {
 	static final int W = 400;
 	static final int H = 236;
-	public static final String[] TABS = {"Overview", "Citizens", "Buildings", "Laws", "Treasury"};
+	public static final String[] TABS = {"Overview", "Citizens", "Buildings", "Laws", "Treasury", "Supply"};
 	static final int ROW = 11;
 	public int tab;
 	private int scroll;
@@ -94,7 +94,7 @@ public class GovernScreen extends Screen {
 		}
 		for (int i = 0; i < TABS.length; i++) {
 			int k = i;
-			this.tabButtons.add(this.addRenderableWidget(Button.builder(Component.literal(TABS[i]), b -> this.setTab(k)).bounds(l + 6 + i * 78, t + 20, 76, 16).build()));
+			this.tabButtons.add(this.addRenderableWidget(Button.builder(Component.literal(TABS[i]), b -> this.setTab(k)).bounds(l + 6 + i * 65, t + 20, 63, 16).build()));
 		}
 		// laws: - and + for the numbers, a switch for each toggle
 		for (int i = 0; i < NUMBERS.length; i++) {
@@ -248,7 +248,8 @@ public class GovernScreen extends Screen {
 			case 1 -> this.citizens(g, d, l, t, mx, my);
 			case 2 -> this.buildings(g, d, l, t, mx, my);
 			case 3 -> this.laws(g, d, l, t);
-			default -> this.treasury(g, d, l, t);
+			case 4 -> this.treasury(g, d, l, t);
+			default -> this.supply(g, d, l, t);
 		}
 		g.fill(l, t + H - 13, l + W, t + H, 0xFF2A1C0E);
 		if (System.currentTimeMillis() - ClientState.messageTime < 8000) {
@@ -386,6 +387,26 @@ public class GovernScreen extends Screen {
 		}
 		if (!d.editable) {
 			Ui.small(g, this.font, "Only the governor may change the laws.", l + 206, t + H - 26, Ui.RED);
+		}
+	}
+
+	/** The food chain, link by link, with what to do about each gap. */
+	private void supply(GuiGraphicsExtractor g, Dto.Govern d, int l, int t) {
+		Ui.panel(g, l + 6, t + 40, l + W - 6, t + H - 16, Ui.PANEL);
+		g.text(this.font, "Is everyone fed? The food chain, checked:", l + 10, t + 44, Ui.GOLD, false);
+		int y = t + 58;
+		for (String line : d.supply) {
+			int lvl = line.charAt(0) - '0';
+			int colour = lvl == 2 ? Ui.RED : lvl == 1 ? 0xFFE8C547 : Ui.GREEN;
+			String text = (lvl == 2 ? "✖ " : lvl == 1 ? "! " : "✔ ") + line.substring(2);
+			for (net.minecraft.util.FormattedCharSequence part : this.font.split(Component.literal(text), W - 24)) {
+				if (y > t + H - 26) {
+					return;
+				}
+				g.text(this.font, part, l + 12, y, colour, false);
+				y += 10;
+			}
+			y += 2;
 		}
 	}
 

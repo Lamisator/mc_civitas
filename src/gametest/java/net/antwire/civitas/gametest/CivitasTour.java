@@ -171,6 +171,9 @@ public class CivitasTour implements FabricClientGameTest {
 			if (run("barracks")) {
 				this.barracksScenes(context, sp, cityId, center);
 			}
+			if (run("hotfix")) {
+				this.hotfixScenes(context, sp, cityId, center);
+			}
 
 			// ---- a working day
 			if (run("work")) {
@@ -431,6 +434,97 @@ public class CivitasTour implements FabricClientGameTest {
 		String[] r = reroute.split(" ");
 		check("earth in the doorway is cleared", !reroute.startsWith("FAIL") && Integer.parseInt(r[0]) >= 2, reroute);
 		check("a wall across the way is walked around", !reroute.startsWith("FAIL") && r[1].equals("true") && r[2].equals("true") && r[3].equals("-"), reroute);
+	}
+
+	/** The 1.1.1 fixes: no friendly fire, the governor isn't an enemy, the town clock, the supply check. */
+	private void hotfixScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, BlockPos center) {
+		// zombies right in front of a crowd of townsfolk: the soldiers must kill them without shooting anyone of their own
+		sp.getServer().runCommand("time set 14500");
+		String crowd = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.firstComplete(BuildingType.BARRACKS);
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			BlockPos at = b.entrance().relative(front, 14);
+			at = new BlockPos(at.getX(), level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, at.getX(), at.getZ()), at.getZ());
+			int n = 0;
+			for (CitizenRecord r : c.citizens.values()) {
+				CitizenEntity e = CityManager.get().entity(r.uuid);
+				if (e == null || r.job == net.antwire.civitas.city.Job.SOLDIER || n >= 6) {
+					continue;
+				}
+				// behind the zombies, as seen from the barracks
+				BlockPos spot = at.relative(front, 3).relative(front.getClockWise(), n - 3);
+				e.teleportTo(spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5);
+				n++;
+			}
+			for (int i = 0; i < 4; i++) {
+				var z = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+				z.snapTo(at.getX() + 0.5 + i - 2, at.getY(), at.getZ() + 0.5, 0, 0);
+				z.setPersistenceRequired();
+				z.addTag("civitas_hotfix_zombie");
+				level.addFreshEntity(z);
+			}
+			return n + "";
+		});
+		int deadBefore = sp.getServer().computeOnServer(server -> (int) CityManager.get().city(cityId).citizens.values().stream()
+			.filter(r -> r.status == CitizenRecord.Status.DEAD).count());
+		int left = 4;
+		for (int t = 0; t < 40 && left > 0; t++) {
+			context.waitTicks(20);
+			left = sp.getServer().computeOnServer(server -> server.overworld().getEntities(net.minecraft.world.entity.EntityTypes.ZOMBIE,
+				z -> z.isAlive() && z.entityTags().contains("civitas_hotfix_zombie")).size());
+		}
+		String hurt = sp.getServer().computeOnServer(server -> {
+			City c = CityManager.get().city(cityId);
+			long dead = c.citizens.values().stream().filter(r -> r.status == CitizenRecord.Status.DEAD).count();
+			return dead + "";
+		});
+		check("soldiers' rounds spare the townsfolk", left == 0 && Integer.parseInt(hurt) <= deadBefore,
+			(4 - left) + " of 4 zombies killed, " + crowd + " citizens in the line of fire, deaths " + deadBefore + " -> " + hurt);
+		// the governor strikes a citizen: no soldier turns on them
+		String governor = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			ServerPlayer p = server.getPlayerList().getPlayers().getFirst();
+			p.setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
+			CitizenEntity victim = null;
+			for (CitizenRecord r : c.citizens.values()) {
+				victim = CityManager.get().entity(r.uuid);
+				if (victim != null && r.job != net.antwire.civitas.city.Job.SOLDIER) {
+					break;
+				}
+			}
+			victim.hurtServer(level, level.damageSources().playerAttack(p), 1.0F);
+			boolean enemy = net.antwire.civitas.entity.ai.Military.threats(level, c).contains(p);
+			p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);
+			return enemy ? "the guards turned on the governor" : "OK";
+		});
+		check("the governor is never the town's enemy", governor.equals("OK"), governor);
+		// the world clock stops: the town's day goes on
+		sp.getServer().runCommand("gamerule advance_time false");
+		int[] clock = sp.getServer().computeOnServer(server -> new int[]{CityManager.timeOfDay(server.overworld())});
+		context.waitTicks(100);
+		int[] later = sp.getServer().computeOnServer(server -> new int[]{CityManager.timeOfDay(server.overworld())});
+		sp.getServer().runCommand("gamerule advance_time true");
+		check("the town keeps its own time when the world clock stands still", later[0] != clock[0], clock[0] + " -> " + later[0]);
+		// the supply check
+		String supply = sp.getServer().computeOnServer(server -> {
+			StringBuilder sb = new StringBuilder();
+			for (var l : net.antwire.civitas.city.Supply.report(server.overworld(), CityManager.get().city(cityId))) {
+				sb.append(l.level()).append(' ').append(l.text()).append(" || ");
+			}
+			return sb.toString();
+		});
+		System.out.println("[civitas-test] SUPPLY " + supply);
+		check("the supply check reports on the food chain", supply.contains("On the counters") && supply.contains("farm"), supply.length() + " chars");
+		sp.getServer().runOnServer(server -> ServerNet.openGovern(server.getPlayerList().getPlayers().getFirst(), CityManager.get().city(cityId)));
+		context.waitFor(mc -> mc.gui.screen() instanceof GovernScreen, 200);
+		context.runOnClient(mc -> ((GovernScreen) mc.gui.screen()).setTab(5));
+		context.waitTicks(10);
+		shot(context, "civitas_ledger_supply");
+		context.runOnClient(mc -> mc.gui.setScreen(null));
+		sp.getServer().runCommand("time set 1500");
 	}
 
 	/** Soldiers against zombies at night, then a raid. */

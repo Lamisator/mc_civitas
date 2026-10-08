@@ -97,14 +97,15 @@ public final class Arms {
 	}
 
 	/** One shot at the aim point. */
-	public static void fire(ServerLevel level, LivingEntity shooter, String weapon, Vec3 aim, float inaccuracy) {
+	public static void fire(ServerLevel level, LivingEntity shooter, String weapon, Vec3 aim, float inaccuracy,
+		java.util.function.Predicate<net.minecraft.world.entity.Entity> spare) {
 		Vec3 eye = shooter.getEyePosition();
 		Vec3 d = aim.subtract(eye);
 		if (ARSENAL && !weapon.equals("bow")) {
 			double h = Math.sqrt(d.x * d.x + d.z * d.z);
 			float yaw = (float) (Math.atan2(d.z, d.x) * 180.0 / Math.PI) - 90.0F;
 			float pitch = (float) -(Math.atan2(d.y, h) * 180.0 / Math.PI);
-			ArsenalCompat.fire(shooter, weapon, yaw, pitch, inaccuracy);
+			ArsenalCompat.fire(shooter, weapon, yaw, pitch, inaccuracy, spare);
 			return;
 		}
 		ItemStack bow = new ItemStack(Items.BOW);

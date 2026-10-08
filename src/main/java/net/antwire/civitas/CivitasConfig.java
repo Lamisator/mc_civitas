@@ -42,6 +42,8 @@ public class CivitasConfig {
 	/** Citizens a town needs before its town hall can be raised to tier 2 and tier 3. */
 	public int tier2Population = 12;
 	public int tier3Population = 24;
+	/** When the world's clock is stopped (gamerule advance_time false), towns keep their own day and night. */
+	public boolean ownClockWhenFrozen = true;
 	/** Zombies, skeletons and illagers go for citizens as they do for villagers (what the barracks is for). */
 	public boolean monstersAttackCitizens = true;
 	/** Chance per day that raiders attack a town of 8 or more (0 = never). */

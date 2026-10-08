@@ -50,6 +50,7 @@ public final class Military {
 	static final class Watch {
 		final Map<UUID, Long> hostile = new HashMap<>();
 		final List<UUID> raiders = new ArrayList<>();
+		final java.util.Set<UUID> warned = new java.util.HashSet<>();
 		List<LivingEntity> threats = List.of();
 		long seenAt = -1;
 		long lastAlarm = -100000;
@@ -94,6 +95,14 @@ public final class Military {
 		}
 		Watch w = watch(city);
 		boolean player = attacker instanceof Player;
+		// the town's own rulers are never fired upon by its soldiers
+		if (player && (attacker.getUUID().equals(city.governor) || city.deputies.contains(attacker.getUUID()))) {
+			if (!w.warned.contains(attacker.getUUID())) {
+				w.warned.add(attacker.getUUID());
+				city.log(attacker.getName().getString() + " struck " + victim.getName().getString() + " - the guards look away from the governor");
+			}
+			return;
+		}
 		Long before = w.hostile.put(attacker.getUUID(), level.getGameTime() + (player ? GRUDGE_PLAYER : GRUDGE_MOB));
 		city.lastAttackDay = city.day;
 		if (before == null && player) {
@@ -498,7 +507,10 @@ public final class Military {
 			// steady when the target holds still, less so when it runs; the marksman takes his time
 			double moving = t.getDeltaMovement().horizontalDistance();
 			float inaccuracy = (float) Math.min(1.0, (this.weapon.equals("awm") ? 0.05 : 0.2) + moving * 2.0);
-			Arms.fire(level, this.npc, this.weapon, aim, inaccuracy);
+			// rounds that miss or go through the target never hurt the town's own people or a peaceful visitor
+			List<LivingEntity> enemies = threats(level, this.city);
+			Arms.fire(level, this.npc, this.weapon, aim, inaccuracy,
+				e -> e instanceof CitizenEntity c && this.city.id.equals(c.cityId()) || e instanceof Player && !enemies.contains(e));
 			this.npc.setAction(CitizenEntity.ACTION_AIM);
 			if (!bow) {
 				MAG.put(this.rec.uuid, mag - 1);

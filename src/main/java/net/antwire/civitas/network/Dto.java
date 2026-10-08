@@ -107,6 +107,8 @@ public final class Dto {
 		/** -1 = server default, 0 = off, 1 = on. */
 		public int keepLoaded = -1;
 		public boolean keepsLoaded;
+		/** The supply check: "level|text" lines (0 fine, 1 warning, 2 trouble). */
+		public List<String> supply = new ArrayList<>();
 	}
 
 	public static class Citizen {

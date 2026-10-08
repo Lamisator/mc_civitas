@@ -171,6 +171,9 @@ public final class ServerNet {
 		d.op = p.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
 		d.keepLoaded = c.keepLoaded == null ? -1 : c.keepLoaded ? 1 : 0;
 		d.keepsLoaded = c.keepsLoaded();
+		for (net.antwire.civitas.city.Supply.Line line : net.antwire.civitas.city.Supply.report(level, c)) {
+			d.supply.add(line.level() + "|" + line.text());
+		}
 		for (int i = 0; i < Math.min(40, c.log.size()); i++) {
 			d.log.add(c.log.get(i));
 		}

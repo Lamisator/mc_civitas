@@ -259,7 +259,7 @@ public final class CityManager {
 			city.radius += 12;
 			b = Planner.find(level, city, type);
 		}
-		net.antwire.civitas.Civitas.LOGGER.info("Planning a {}: {} way searches, {} failed ({}), {} ms", type.id(), Planner.routes, Planner.routeFails,
+		net.antwire.civitas.Civitas.LOGGER.debug("Planning a {}: {} way searches, {} failed ({}), {} ms", type.id(), Planner.routes, Planner.routeFails,
 			Access.why, Planner.routeNanos / 1_000_000);
 		if (b == null) {
 			return null;

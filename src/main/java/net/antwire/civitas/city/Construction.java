@@ -29,7 +29,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
  */
 public final class Construction {
 	public enum Kind {
-		CLEAR, FOUNDATION, BLOCK, ROAD, DEMOLISH
+		CLEAR, FOUNDATION, BLOCK, ROAD, DEMOLISH, EXCAVATE
 	}
 
 	public record Step(Kind kind, BlockPos pos, BlockState state) {
@@ -133,11 +133,8 @@ public final class Construction {
 		List<Step> clear = new ArrayList<>();
 		for (java.util.Map.Entry<BlockPos, BlockState> e : to.entrySet()) {
 			if (!from.containsKey(e.getKey())) {
-				// a cellar going in under the old building: its foundation stones come out first
-				if (e.getKey().getY() < b.origin.getY() && !from.isEmpty()) {
-					down.add(new Step(Kind.DEMOLISH, e.getKey(), Blocks.COBBLESTONE.defaultBlockState()));
-				}
-				clear.add(new Step(Kind.CLEAR, e.getKey(), air));
+				// below ground (a cellar) the builders dig out whatever is there: earth, stone, old foundations
+				clear.add(new Step(e.getKey().getY() < b.origin.getY() ? Kind.EXCAVATE : Kind.CLEAR, e.getKey(), air));
 			}
 		}
 		for (java.util.Map.Entry<Long, int[]> c : columns.entrySet()) {
@@ -214,6 +211,7 @@ public final class Construction {
 		return switch (step.kind()) {
 			case CLEAR -> !now.isAir() && now.getDestroySpeed(level, step.pos()) >= 0 && level.getBlockEntity(step.pos()) == null && natural(now);
 			case DEMOLISH -> now.getBlock() == step.state().getBlock();
+			case EXCAVATE -> !now.isAir() && now.getDestroySpeed(level, step.pos()) >= 0 && level.getBlockEntity(step.pos()) == null;
 			case FOUNDATION -> now.canBeReplaced() || !now.getFluidState().isEmpty();
 			case BLOCK, ROAD -> !now.is(step.state().getBlock());
 		};
@@ -224,6 +222,14 @@ public final class Construction {
 		BlockPos pos = step.pos();
 		BlockState now = level.getBlockState(pos);
 		switch (step.kind()) {
+			case EXCAVATE -> {
+				if (now.isAir() || now.getDestroySpeed(level, pos) < 0 || level.getBlockEntity(pos) != null) {
+					return Result.SKIPPED;
+				}
+				demolish(level, city, pos, now);
+				level.playSound(null, pos, now.getSoundType().getBreakSound(), SoundSource.BLOCKS, 0.7F, 1.0F);
+				return Result.PLACED;
+			}
 			case DEMOLISH -> {
 				if (now.getBlock() != step.state().getBlock()) {
 					return Result.SKIPPED;
@@ -318,6 +324,11 @@ public final class Construction {
 		switch (step.kind()) {
 			case DEMOLISH -> {
 				if (now.getBlock() == step.state().getBlock()) {
+					demolish(level, city, pos, now);
+				}
+			}
+			case EXCAVATE -> {
+				if (!now.isAir() && now.getDestroySpeed(level, pos) >= 0 && level.getBlockEntity(pos) == null) {
 					demolish(level, city, pos, now);
 				}
 			}

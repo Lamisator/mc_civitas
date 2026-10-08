@@ -458,12 +458,12 @@ public final class Townlife {
 				continue;
 			}
 			BlockState s = level.getBlockState(p);
-			// the old foundations under the building are dug out for a cellar
-			if (p.getY() < b.origin.getY() && s.is(Blocks.COBBLESTONE)) {
+			// underground the builders dig out what's there (only a chest, a furnace or bedrock stops them)
+			if (p.getY() < b.origin.getY() && (s.getDestroySpeed(level, p) >= 0 && level.getBlockEntity(p) == null)) {
 				continue;
 			}
 			if (!s.isAir() && (!Construction.natural(s) || level.getBlockEntity(p) != null)) {
-				return "no room to grow: something is built at " + p.toShortString();
+				return "no room to grow: " + s.getBlock().getName().getString().toLowerCase() + " at " + p.toShortString() + " is in the way";
 			}
 		}
 		return null;

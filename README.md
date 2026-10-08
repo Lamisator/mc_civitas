@@ -112,6 +112,11 @@ Some of the other upgrades:
 
 A home in a grander house also makes its residents happier.
 
+![The town hall at tier I: one storey of stone and timber](docs/img/tier1_hall.jpg)
+![Tier II: a second storey with the council chamber](docs/img/tier2_hall.jpg)
+![Tier III: three storeys on a stone ground floor, a slate roof and the clock tower](docs/img/tier3_hall.jpg)
+![Upstairs in a tier III house: bedrooms, with the stairwell behind its railing](docs/img/tier3_upstairs.jpg)
+
 Each floor is four blocks high. A staircase along the inside of the side wall switches back from floor to floor, with railings round the stairwell.
 
 **Unlocking.** The **town hall** goes up first: to tier II at 12 citizens, to tier III at 24 (`tier2Population`, `tier3Population`). Every other building can then be raised to the town hall's tier. New buildings are planned at the town hall's tier straight away. Each tier doubles the planning fee.
@@ -173,6 +178,27 @@ Soldiers are paid by the treasury, at 1.4 times the base wage.
 ![The barracks: soldiers on the parade ground, targets and the alarm bell at the sides](docs/img/barracks.jpg)
 ![Inside: bunks and footlockers, the map table under the colours, weapon racks and ammunition crates; the night watch asleep](docs/img/barracks_inside.jpg)
 
+## Self-government
+
+Hand the town to its **council** and it governs itself. In the ledger's Laws tab, click **Laws by: you** to cycle through the strategies, or use `/civitas council <strategy>`.
+
+Each morning the council sets the day's laws. It moves step by step, a few points of tax a day rather than all at once, and the log says what it changed. It also plans the buildings its strategy favours, and it always plans buildings itself and lets people choose their work. You can take the reins back at any time.
+
+| Strategy | What the council does |
+|---|---|
+| **Growth** | low taxes and rent, good wages, cheap bread, open doors (but no new settlers while people go hungry), rations for the hungry; more houses and farms |
+| **Equality** | high income tax paid back to everyone as a basic income from what the treasury can spare, free rations, a 7-hour day, low prices, short sentences; a tavern early |
+| **Prosperity** | moderate taxes, good wages, market prices, a 9-hour day, high dividends; the smithy, bank and factory first |
+| **Order** | curfew, five-day sentences, martial law whenever there is unrest; sheriffs, barracks and prison first |
+| **Extortion** | as hard as they will bear: high taxes, rents and prices, low wages, 14-hour days, forced labour, no safety rules, martial law at the first sign of unrest. Rations only for the starving. A quarter of whatever the treasury holds above its reserve goes to the governor every day. When they riot or break it eases off a little; when they're meek it squeezes harder. Mine, prison and factory first. |
+| **Balanced** | steers for a content town with a steady treasury: lowers taxes and raises wages when spirits sink, raises them when people are happy but the treasury shrinks |
+
+Every council except the extortionist's holds a festival when spirits are low and the treasury can afford it.
+
+### Keeping a town loaded
+
+Operators decide whether a town lives on while nobody is near: its land stays loaded and its citizens keep working, eating and sleeping. Use the **Load** switch in the Laws tab, visible only to operators, or `/civitas keeploaded on|off|default`. The default follows `keepTownsLoaded` in the server config. The server itself must keep running too: Minecraft pauses an empty server unless `pause-when-empty-seconds` is set to -1.
+
 ## Is everyone fed?
 
 The ledger's **Supply** page checks the town's food link by link and says what to do about each gap:
@@ -185,6 +211,8 @@ The ledger's **Supply** page checks the town's food link by link and says what t
 - whether settlers keep arriving while people go hungry
 
 When people go hungry, the governor gets a message each morning.
+
+![The Supply page](docs/img/supply.jpg)
 
 **A frozen world clock.** If the server stops time (gamerule `advance_time` false), days would never end: no wages, no rent, no counted meals, and people at work forever. Towns then keep their own clock, running on from where the world's clock stopped, with its own day and night (`ownClockWhenFrozen`).
 
@@ -274,6 +302,8 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `/civitas day` | operators: let a day pass |
 | `/civitas immigrate <n>` | operators: settlers arrive |
 | `/civitas upgrade <type>` | operators: raise a building of that type one tier |
+| `/civitas council <strategy>` | governor or operator: let the council govern (growth, equality, prosperity, order, extortion, balanced) or `none` |
+| `/civitas keeploaded on\|off\|default` | operators: keep the town loaded while nobody is near |
 | `/civitas raid` | operators: raiders attack the town you're in |
 | `/civitas access` | operators: check (and repair) access to every building now |
 

@@ -634,7 +634,7 @@ public final class Access {
 	}
 
 	/** Part of some building's blueprint (those blocks are the building's business, not the way's). */
-	private static boolean owned(City city, BlockPos p) {
+	public static boolean owned(City city, BlockPos p) {
 		for (Building o : city.buildings) {
 			if (inside(o, p.getX(), p.getZ())) {
 				BlockPos rel = local(o, p);

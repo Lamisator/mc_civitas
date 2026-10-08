@@ -88,7 +88,106 @@ public final class Blueprint {
 
 		public Blueprint build() {
 			Access.clearDoorways(this, "blueprint");
+			this.lightPockets();
 			return new Blueprint(this.w, this.h, this.d, this.base, this.states, this.marks);
+		}
+
+		/** Light reaches this far from a light block (level 15) before it is too dim to keep monsters away. */
+		static final int LIGHT_REACH = 12;
+
+		/** Can air (and so light and monsters) get through this cell? */
+		private static boolean open(@Nullable BlockState s) {
+			if (s == null || s.isAir() || s.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+				|| s.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock || s.getBlock() instanceof net.minecraft.world.level.block.TrapDoorBlock) {
+				return true;
+			}
+			return s.getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty();
+		}
+
+		/**
+		 * Sealed air under roofs, behind gables and in wall cavities is never walked into and never lit, so monsters would
+		 * spawn there and scare the town. Every pocket of air that can't be reached from outside or through a door gets
+		 * hidden light blocks, close enough together that no spot in it stays dark.
+		 */
+		void lightPockets() {
+			int n = this.states.length;
+			boolean[] outside = new boolean[n];
+			java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+			int layers = this.h + this.base;
+			for (int y = 0; y < layers; y++) {
+				for (int z = 0; z < this.d; z++) {
+					for (int x = 0; x < this.w; x++) {
+						boolean edge = x == 0 || z == 0 || x == this.w - 1 || z == this.d - 1 || y == layers - 1 || y == 0;
+						int i = (y * this.d + z) * this.w + x;
+						if (edge && open(this.states[i])) {
+							outside[i] = true;
+							queue.add(i);
+						}
+					}
+				}
+			}
+			flood(queue, outside, -1);
+			// what is left over and open is a sealed pocket; light it, one light per patch
+			boolean[] lit = new boolean[n];
+			for (int i = 0; i < n; i++) {
+				BlockState s = this.states[i];
+				if (outside[i] || lit[i] || s == null || !s.isAir()) {
+					continue;
+				}
+				// only where something could stand: a solid block below
+				int below = i - this.w * this.d;
+				if (below < 0 || this.states[below] == null || open(this.states[below])) {
+					continue;
+				}
+				this.states[i] = Blocks.LIGHT.defaultBlockState();
+				lit[i] = true;
+				java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
+				q.add(i);
+				this.reach(q, lit, outside);
+			}
+		}
+
+		/** Marks every open cell reachable from the queue (all of them, or within LIGHT_REACH steps when lighting). */
+		private void flood(java.util.ArrayDeque<Integer> queue, boolean[] seen, int limit) {
+			while (!queue.isEmpty()) {
+				int i = queue.poll();
+				for (int nb : this.neighbours(i)) {
+					if (nb >= 0 && !seen[nb] && open(this.states[nb])) {
+						seen[nb] = true;
+						queue.add(nb);
+					}
+				}
+			}
+		}
+
+		private void reach(java.util.ArrayDeque<Integer> queue, boolean[] lit, boolean[] outside) {
+			java.util.Map<Integer, Integer> dist = new java.util.HashMap<>();
+			dist.put(queue.peek(), 0);
+			while (!queue.isEmpty()) {
+				int i = queue.poll();
+				int dd = dist.get(i);
+				if (dd >= LIGHT_REACH) {
+					continue;
+				}
+				for (int nb : this.neighbours(i)) {
+					if (nb >= 0 && !outside[nb] && !dist.containsKey(nb) && open(this.states[nb])) {
+						dist.put(nb, dd + 1);
+						lit[nb] = true;
+						queue.add(nb);
+					}
+				}
+			}
+		}
+
+		/** The six neighbours of a cell (-1 where the plan ends). */
+		private int[] neighbours(int i) {
+			int x = i % this.w;
+			int z = (i / this.w) % this.d;
+			int y = i / (this.w * this.d);
+			int layers = this.h + this.base;
+			int s = this.w * this.d;
+			return new int[]{x > 0 ? i - 1 : -1, x < this.w - 1 ? i + 1 : -1, z > 0 ? i - this.w : -1, z < this.d - 1 ? i + this.w : -1, y > 0 ? i - s : -1,
+				y < layers - 1 ? i + s : -1};
 		}
 
 		private boolean inside(int x, int y, int z) {

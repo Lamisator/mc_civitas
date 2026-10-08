@@ -137,6 +137,55 @@ Every building can be entered and used. The engine checks this at three points:
 
 By default the town council plans what the town needs by itself: food first, then homes, timber, ore and the trades. You can switch that off and plan everything yourself.
 
+### Name signs and hidden lights
+
+Every finished building gets a sign beside its door, at eye height: what it is, its number (the town's name on the town hall), and its tier. The sign is oak at tier I, spruce at tier II and dark oak with glowing white letters at tier III, and it is replaced when the building goes up a tier. Open buildings without a wall by the door (farms, forges) get the sign on a post beside the entrance.
+
+![A house's name sign beside the door](docs/img/works_sign.jpg)
+
+Pitched roofs leave sealed air under them: attics nobody can walk into, and cavities behind gables. Unlit, they would breed monsters, and the townsfolk nearby would flee from them. Every plan therefore carries hidden light blocks in each sealed pocket, spaced so no spot in it stays dark. The inspectors (below) also put them into buildings built before Civitas 1.3, within minutes of the server starting.
+
+### Damage and repairs
+
+Inspectors walk the town in rounds, one building every five seconds, then the wall, then the street lamps. They compare what stands with the plan. Blocks that are gone, burnt, blown away or buried under debris become a **repair**. Blocks someone else put in their place are reported, but left alone.
+
+- Builders take repairs first, before new buildings, the wall and the streets. Materials come from the stockpile or are bought with treasury money. Doors and beds come back whole, walls before the lanterns that hang on them.
+- The ledger's **Buildings** tab shows damage in the state column (`damaged (87%)`, `repairing 40%`). Click it to order the repair.
+- **Auto-repair** (Works tab, on by default) repairs whatever the inspectors find. Switched off, damage waits until you order it: per building, or with **Repair all now**.
+- What grows, what flows and the mine's staircase are not repaired: crops, saplings, leaves, flowers, water and the miners' own digging. Nor is earth that turned into path or field, or anything that couldn't stay where the plan puts it. Something hanging on a wall that is gone comes back after the wall does.
+- The inspectors also keep the wall's gateways clear of whatever grows or falls into them.
+
+| A blast against a house | Repaired by the builders |
+|---|---|
+| ![](docs/img/works_damaged.jpg) | ![](docs/img/works_repaired.jpg) |
+
+### The town wall
+
+**Works → Build the wall** rings the town with a wall around every plot, way and street lamp, five blocks clear of them. It follows the ground and closes over water. There is a 3-block gate in every side, aimed at the town square's line, with more along long sides (no stretch longer than 56 blocks). The wall leaves a gap rather than run through anyone's build.
+
+| | Tier I | Tier II | Tier III |
+|---|---|---|---|
+| Style | wooden palisade: spruce planks with fence pickets, posts every four blocks | cobblestone base under a spruce parapet with cobblestone merlons, lanterns on the gate posts | stone brick with battlements, corner towers three blocks higher, lanterns on the gate posts |
+| Height | 4 | 5 | 5 (towers 8) |
+
+| Tier I gate | Tier II gate | Tier III gate |
+|---|---|---|
+| ![](docs/img/works_gate_tier1.jpg) | ![](docs/img/works_gate_tier2.jpg) | ![](docs/img/works_gate_tier3.jpg) |
+
+![A tier I palisade round a whole town](docs/img/works_wall_tier1.jpg)
+
+The wall keeps up with the town by itself. Once a day it is checked: when the town hall has gone up a tier, the wall is rebuilt in the new style. When the town has grown past it (a new plot or way too close or outside), it is moved outwards: the new stretch goes up and the old one comes down, its blocks going to the stockpile. Plots are never planned across the wall, and ways cross it only at gates. Damage to the wall is found and repaired like damage to buildings.
+
+### Streets
+
+**Works → Pave** paves every way with stone bricks where it runs over earth (dirt paths, grass, gravel). After that, **Lamps** puts a street lamp beside the ways every ten steps: a three-high spruce post with a lantern on top, clear of plots, the wall and the other lamps. Once ordered, new ways are paved and lit as they are made, once a day. Lamps are inspected and repaired like everything else.
+
+![Paved ways and street lamps at dusk](docs/img/works_streets.jpg)
+
+The Works tab shows the wall and the streets with their cost, the repairs, and every job in hand with its progress and the money still needed.
+
+![The ledger's Works tab](docs/img/works_ledger.jpg)
+
 ## Defence
 
 From 12 citizens on, the town builds a **barracks**. It builds one from 6 citizens on if it was attacked in the last three days.
@@ -298,7 +347,7 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `/civitas govern [town]` | open the ledger |
 | `/civitas found <name>` | found a town 10 blocks ahead (needs a charter in hand) |
 | `/civitas build <type>` | operators: plan a building |
-| `/civitas complete` | operators: finish all construction at once |
+| `/civitas complete` | operators: finish all construction, repairs, wall and street works at once |
 | `/civitas day` | operators: let a day pass |
 | `/civitas immigrate <n>` | operators: settlers arrive |
 | `/civitas upgrade <type>` | operators: raise a building of that type one tier |
@@ -306,6 +355,9 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `/civitas keeploaded on\|off\|default` | operators: keep the town loaded while nobody is near |
 | `/civitas raid` | operators: raiders attack the town you're in |
 | `/civitas access` | operators: check (and repair) access to every building now |
+| `/civitas inspect` | operators: inspect every building now; lists damage and the work in hand |
+| `/civitas wall` | operators: build the wall (or bring it up to the town's tier and size) |
+| `/civitas streets 1\|2` | operators: pave the ways (1) and add street lamps (2) |
 
 ## Configuration
 
@@ -335,7 +387,7 @@ Every day the town reports its earnings, which move the share price. Strikes and
 ## Building from source
 
 ```
-./gradlew build                                    # build/libs/civitas-1.2.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.1.jar)
+./gradlew build                                    # build/libs/civitas-1.3.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.1.jar)
 ./gradlew runClientGameTest -PwithArsenal          # founds a town, checks access, fights, governs it well and badly, takes screenshots
 ```
 

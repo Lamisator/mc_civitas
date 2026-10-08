@@ -53,6 +53,35 @@ public class City {
 		return this.keepLoaded != null ? this.keepLoaded : net.antwire.civitas.CivitasConfig.get().keepTownsLoaded;
 	}
 
+	/** Repairs, the wall, paving and street lamps: builders take repairs first, then new buildings, then the rest. */
+	public List<Project> projects = new ArrayList<>();
+	/** Damage is repaired as soon as the daily rounds find it (otherwise the governor orders each repair). */
+	public boolean autoRepair = true;
+	/** The town wall: its tier (0 = none), every block of it ("x y z state") and its outline {minX, minZ, maxX, maxZ}. */
+	public int wallTier;
+	public List<String> wall = new ArrayList<>();
+	public int @Nullable [] wallRect;
+	/** 0 = trodden paths, 1 = paved, 2 = paved and lit by street lamps. */
+	public int streets;
+	/** Street lamps: the ground under each post. */
+	public List<BlockPos> lamps = new ArrayList<>();
+	/** Which part of the town the inspectors look at next (buildings, then the wall, then the lamps). */
+	public transient int inspectCursor;
+	/** Cost estimates for the ledger, worked out at most once a day. */
+	public transient long wallEstimate;
+	public transient long wallEstimateKey = -1;
+	public transient long[] streetEstimate = {0, 0};
+	public transient long streetEstimateKey = -1;
+
+	public @Nullable Project project(String kind, String target) {
+		for (Project p : this.projects) {
+			if (p.kind.equals(kind) && p.target.equals(target)) {
+				return p;
+			}
+		}
+		return null;
+	}
+
 	/** The last day anyone attacked the town or its people. */
 	public int lastAttackDay = -100;
 

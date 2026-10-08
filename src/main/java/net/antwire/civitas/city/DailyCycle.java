@@ -294,6 +294,9 @@ public final class DailyCycle {
 				Townlife.checkAccess(level, city, b);
 			}
 		}
+		// the wall goes round the whole town in the town's style; new ways get paved and lit
+		Walls.daily(level, city);
+		Streets.daily(level, city);
 
 		// ---- feelings fade, the books close
 		city.grievance *= 0.7;

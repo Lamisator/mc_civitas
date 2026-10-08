@@ -180,6 +180,9 @@ public class CivitasTour implements FabricClientGameTest {
 			if (run("council")) {
 				this.councilScenes(context, sp, cityId, center);
 			}
+			if (run("works")) {
+				this.worksScenes(context, sp, cityId, center);
+			}
 
 			// ---- a working day
 			if (run("work")) {
@@ -440,6 +443,382 @@ public class CivitasTour implements FabricClientGameTest {
 		String[] r = reroute.split(" ");
 		check("earth in the doorway is cleared", !reroute.startsWith("FAIL") && Integer.parseInt(r[0]) >= 2, reroute);
 		check("a wall across the way is walked around", !reroute.startsWith("FAIL") && r[1].equals("true") && r[2].equals("true") && r[3].equals("-"), reroute);
+	}
+
+	/** Name signs, damage found and repaired, the town wall at every tier and as the town grows, paved and lit streets. */
+	private void worksScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, BlockPos center) {
+		String at = "execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run ";
+		sp.getServer().runOnServer(server -> CommerceApi.mint(CityManager.get().city(cityId).account(), 10_000_000, "test grant"));
+		// ---- every building has its name sign by the door
+		String signs = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			int n = 0;
+			int with = 0;
+			StringBuilder none = new StringBuilder();
+			for (Building b : c.buildings) {
+				if (!b.complete) {
+					continue;
+				}
+				n++;
+				if (b.sign == null) {
+					net.antwire.civitas.city.Works.placeSign(level, c, b);
+				}
+				if (b.sign != null && level.getBlockState(b.sign).getBlock() instanceof net.minecraft.world.level.block.SignBlock) {
+					with++;
+				} else {
+					none.append(b.type.id()).append(b.sign == null ? "(no spot)" : "(" + level.getBlockState(b.sign).getBlock().getDescriptionId() + ")").append(" ");
+				}
+			}
+			return with + " of " + n + (none.isEmpty() ? "" : " - none on " + none);
+		});
+		check("every building has a name sign", signs.startsWith(signs.split(" ")[2] + " "), signs);
+		int houseId = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).firstComplete(BuildingType.HOUSE).id);
+		// ---- no dark corners: sealed attics and cavities carry hidden lights, also in buildings from before they existed
+		String retro = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.building(houseId);
+			int removed = 0;
+			var box = b.bounds();
+			for (BlockPos q : BlockPos.betweenClosed((int) box.minX, (int) box.minY, (int) box.minZ, (int) box.maxX - 1, (int) box.maxY - 1, (int) box.maxZ - 1)) {
+				if (level.getBlockState(q).is(net.minecraft.world.level.block.Blocks.LIGHT)) {
+					level.setBlock(q, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+					removed++;
+				}
+			}
+			net.antwire.civitas.city.Works.inspect(level, c, b, false);
+			int back = 0;
+			for (BlockPos q : BlockPos.betweenClosed((int) box.minX, (int) box.minY, (int) box.minZ, (int) box.maxX - 1, (int) box.maxY - 1, (int) box.maxZ - 1)) {
+				if (level.getBlockState(q).is(net.minecraft.world.level.block.Blocks.LIGHT)) {
+					back++;
+				}
+			}
+			return removed + " " + back;
+		});
+		String[] rt = retro.split(" ");
+		check("hidden lights are put back into older buildings", Integer.parseInt(rt[0]) > 0 && rt[0].equals(rt[1]), retro + " (taken out, back after inspection)");
+		context.waitTicks(40);
+		String dark = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			StringBuilder out = new StringBuilder();
+			int spots = 0;
+			for (Building b : c.buildings) {
+				if (!b.complete) {
+					continue;
+				}
+				var box = b.bounds();
+				int here = 0;
+				BlockPos first = null;
+				for (BlockPos q : BlockPos.betweenClosed((int) box.minX, (int) box.minY + 1, (int) box.minZ, (int) box.maxX - 1, (int) box.maxY - 1, (int) box.maxZ - 1)) {
+					if (!level.getBlockState(q).isAir() || !level.getBlockState(q.below()).isFaceSturdy(level, q.below(), Direction.UP)) {
+						continue;
+					}
+					if (level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, q) == 0 && level.getBrightness(net.minecraft.world.level.LightLayer.SKY, q) == 0) {
+						here++;
+						if (first == null) {
+							first = q.immutable();
+						}
+					}
+				}
+				if (here > 0) {
+					spots += here;
+					out.append(b.type.id()).append(" ").append(b.tier).append(": ").append(here).append(" at ").append(first.toShortString()).append("; ");
+				}
+			}
+			return spots == 0 ? "OK" : spots + " dark spots: " + out;
+		});
+		check("no dark enclosed spot in any building", dark.equals("OK"), dark);
+		Vec3[] signCam = sp.getServer().computeOnServer(server -> {
+			Building b = CityManager.get().city(cityId).building(houseId);
+			if (b.sign == null) {
+				return null;
+			}
+			Direction out = b.rot().rotate(Direction.SOUTH);
+			Vec3 s = Vec3.atCenterOf(b.sign);
+			return new Vec3[]{s.add(Vec3.atLowerCornerOf(out.getUnitVec3i()).scale(3.5)).add(0, -1.2, 0), s};
+		});
+		if (signCam != null) {
+			this.look(context, sp, signCam[0].x, signCam[0].y, signCam[0].z, signCam[1]);
+			context.waitTicks(30);
+			shot(context, "civitas_works_sign");
+		}
+		// ---- damage: a blast against the house is found and repaired
+		String blast = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.building(houseId);
+			Vec3 e = Vec3.atCenterOf(b.entrance());
+			level.explode(null, e.x, e.y + 1, e.z, 3.5F, net.minecraft.world.level.Level.ExplosionInteraction.TNT);
+			int n = net.antwire.civitas.city.Works.inspect(level, c, b, false);
+			var p = c.project(net.antwire.civitas.city.Project.REPAIR, "b:" + b.id);
+			return n + " " + b.condition + " " + (p != null);
+		});
+		String[] bl = blast.split(" ");
+		check("a blast against the house is found", Integer.parseInt(bl[0]) > 5 && bl[2].equals("true"), blast + " (blocks to put back, condition %, repair queued)");
+		this.front(context, sp, cityId, houseId, 10, 4, "civitas_works_damaged");
+		// builders mend it (before anything else); the rest is finished at once to keep the test short
+		for (int k = 0; k < 6; k++) {
+			context.waitTicks(400);
+			boolean done = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).project(net.antwire.civitas.city.Project.REPAIR, "b:" + houseId) == null);
+			if (done) {
+				break;
+			}
+		}
+		String mending = sp.getServer().computeOnServer(server -> {
+			City c = CityManager.get().city(cityId);
+			var p = c.project(net.antwire.civitas.city.Project.REPAIR, "b:" + houseId);
+			long builders = c.citizens.values().stream().filter(r -> r.present() && r.job == net.antwire.civitas.city.Job.BUILDER).count();
+			return (p == null ? "done" : p.progress + "/" + p.jobs.size()) + " with " + builders + " builders";
+		});
+		int jobsLeft = mending.startsWith("done") ? 0 : Integer.parseInt(mending.substring(mending.indexOf('/') + 1, mending.indexOf(' ')));
+		check("builders repair the damage", jobsLeft < Integer.parseInt(bl[0]) / 2, mending + " (jobs left of " + bl[0] + ")");
+		sp.getServer().runCommand(at + "civitas complete");
+		String after = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.building(houseId);
+			net.antwire.civitas.city.Works.inspect(level, c, b, false);
+			var left = c.project(net.antwire.civitas.city.Project.REPAIR, "b:" + b.id);
+			StringBuilder what = new StringBuilder();
+			if (left != null) {
+				for (var j : left.jobs) {
+					what.append(" ").append(j.k).append(" ").append(j.p.toShortString()).append(" ").append(j.s).append(" now ")
+						.append(level.getBlockState(j.p).getBlock().getDescriptionId()).append(" below ").append(level.getBlockState(j.p.below()).getBlock().getDescriptionId());
+				}
+			}
+			return b.missing + " " + b.condition + "%" + what;
+		});
+		check("the house stands as planned again", after.startsWith("0 "), after);
+		this.front(context, sp, cityId, houseId, 10, 4, "civitas_works_repaired");
+		// ---- the wall at each tier
+		for (int tier = 1; tier <= 3; tier++) {
+			int to = tier;
+			String wall = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				int[] rect = c.wallRect == null ? net.antwire.civitas.city.Walls.needed(c) : c.wallRect;
+				var p = net.antwire.civitas.city.Walls.start(level, c, to, rect);
+				if (p == null) {
+					return "FAIL nothing to build";
+				}
+				net.antwire.civitas.city.Works.completeAll(level, c);
+				// one round of the inspectors, as in the running town
+				net.antwire.civitas.city.Walls.inspect(level, c, true);
+				net.antwire.civitas.city.Works.completeAll(level, c);
+				List<BlockPos> gates = net.antwire.civitas.city.Walls.openings(level, c);
+				int blocked = 0;
+				StringBuilder in = new StringBuilder();
+				for (BlockPos g : gates) {
+					if (!level.getBlockState(g).isAir()) {
+						blocked++;
+						if (blocked <= 4) {
+							in.append(g.toShortString()).append("=").append(level.getBlockState(g).getBlock().getDescriptionId().replace("block.minecraft.", "")).append(";");
+						}
+					}
+				}
+				int missing = 0;
+				for (String cell : c.wall) {
+					String[] f = cell.split(" ", 4);
+					BlockPos q = new BlockPos(Integer.parseInt(f[0]), Integer.parseInt(f[1]), Integer.parseInt(f[2]));
+					if (level.getBlockState(q).isAir()) {
+						missing++;
+					}
+				}
+				return c.wallTier + " " + c.wall.size() + " " + gates.size() / 3 + " " + blocked + " " + missing + " " + in;
+			});
+			String[] w = wall.split(" ");
+			check("wall tier " + to + " built with gates", !wall.startsWith("FAIL") && w[0].equals(String.valueOf(to)) && Integer.parseInt(w[2]) >= 12
+				&& w[3].equals("0") && w[4].equals("0"), wall + " (tier, blocks, gate columns, gate blocks not clear, wall blocks missing)");
+			int[] r = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).wallRect);
+			double cx = (r[0] + r[2]) / 2.0;
+			double cz = (r[1] + r[3]) / 2.0;
+			double span = Math.max(r[2] - r[0], r[3] - r[1]);
+			this.look(context, sp, r[0] - span * 0.25, center.getY() + span * 0.45, r[3] + span * 0.25, new Vec3(cx, center.getY(), cz));
+			context.waitTicks(100);
+			shot(context, "civitas_works_wall_tier" + to);
+			// a gate up close
+			Vec3[] gate = sp.getServer().computeOnServer(server -> {
+				City c = CityManager.get().city(cityId);
+				List<BlockPos> gs = net.antwire.civitas.city.Walls.openings(server.overworld(), c);
+				BlockPos best = null;
+				for (BlockPos g : gs) {
+					if (g.getZ() == c.wallRect[3] && (best == null || Math.abs(g.getX() - c.center.getX()) < Math.abs(best.getX() - c.center.getX()))) {
+						best = g;
+					}
+				}
+				return best == null ? null : new Vec3[]{Vec3.atCenterOf(best).add(4, 2, 9), Vec3.atCenterOf(best).add(0, 1, 0)};
+			});
+			if (gate != null) {
+				this.look(context, sp, gate[0].x, gate[0].y, gate[0].z, gate[1]);
+				context.waitTicks(40);
+				shot(context, "civitas_works_gate_tier" + to);
+			}
+		}
+		// every building can still be entered, and every way still reaches the square
+		String inside = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			StringBuilder bad = new StringBuilder();
+			for (Building b : c.buildings) {
+				var a = b.complete ? net.antwire.civitas.city.Access.audit(level, c, b) : null;
+				if (a != null && a.blocked() != null) {
+					bad.append(b.type.id()).append(": ").append(a.blocked()).append("; ");
+				}
+			}
+			return bad.isEmpty() ? "OK" : bad.toString();
+		});
+		check("the wall keeps every way open", inside.equals("OK"), inside);
+		// ---- the town outgrows its wall: the wall moves out
+		String grow = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			int[] before = c.wallRect.clone();
+			c.radius = Math.max(c.radius, (Math.max(before[2] - before[0], before[3] - before[1]) / 2) + 40);
+			Building b = null;
+			for (int k = 0; k < 6 && b == null; k++) {
+				Building cand = CityManager.get().plan(level, c, BuildingType.HOUSE);
+				if (cand != null && !net.antwire.civitas.city.Walls.inside(before, net.antwire.civitas.city.Walls.needed(c), 0)) {
+					b = cand;
+				}
+			}
+			if (b == null) {
+				return "FAIL no house outside the wall";
+			}
+			net.antwire.civitas.city.Walls.daily(level, c);
+			var p = c.project(net.antwire.civitas.city.Project.WALL, "wall");
+			if (p == null) {
+				return "FAIL the wall did not move";
+			}
+			return "OK";
+		});
+		check("the wall moves out when the town grows", grow.equals("OK"), grow);
+		sp.getServer().runCommand(at + "civitas complete");
+		String grown = sp.getServer().computeOnServer(server -> {
+			City c = CityManager.get().city(cityId);
+			return net.antwire.civitas.city.Walls.inside(c.wallRect, net.antwire.civitas.city.Walls.needed(c), 0) ? "OK" : "FAIL plots outside";
+		});
+		check("the moved wall goes round every plot", grown.equals("OK"), grown);
+		// ---- wall damage is repaired
+		String wallFix = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			int broken = 0;
+			for (int i = 0; i < c.wall.size(); i += 37) {
+				String[] f = c.wall.get(i).split(" ", 4);
+				level.setBlock(new BlockPos(Integer.parseInt(f[0]), Integer.parseInt(f[1]), Integer.parseInt(f[2])), net.minecraft.world.level.block.Blocks.AIR
+					.defaultBlockState(), 3);
+				broken++;
+			}
+			net.antwire.civitas.city.Walls.inspect(level, c, false);
+			var p = c.project(net.antwire.civitas.city.Project.REPAIR, "wall");
+			int jobs = p == null ? 0 : p.jobs.size();
+			net.antwire.civitas.city.Works.completeAll(level, c);
+			net.antwire.civitas.city.Walls.inspect(level, c, false);
+			return broken + " " + jobs + " " + (c.project(net.antwire.civitas.city.Project.REPAIR, "wall") == null);
+		});
+		String[] wf = wallFix.split(" ");
+		check("broken wall is found and repaired", Integer.parseInt(wf[1]) >= Integer.parseInt(wf[0]) && wf[2].equals("true"), wallFix + " (broken, jobs, fixed)");
+		// ---- streets: paved, then lit
+		String streets = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			String a = net.antwire.civitas.city.Streets.order(level, c, 1);
+			net.antwire.civitas.city.Works.completeAll(level, c);
+			int earth = 0;
+			int paved = 0;
+			for (Building b : c.buildings) {
+				if (!b.complete) {
+					continue;
+				}
+				for (BlockPos g : b.approach) {
+					if (net.antwire.civitas.city.Access.owned(c, g)) {
+						continue; // a building's own ground: its business, not the street's
+					}
+					var s = level.getBlockState(g);
+					if (s.is(net.minecraft.world.level.block.Blocks.STONE_BRICKS)) {
+						paved++;
+					} else if (s.is(net.minecraft.world.level.block.Blocks.DIRT_PATH) || s.is(net.minecraft.world.level.block.Blocks.GRASS_BLOCK)) {
+						earth++;
+					}
+				}
+			}
+			String l = net.antwire.civitas.city.Streets.order(level, c, 2);
+			net.antwire.civitas.city.Works.completeAll(level, c);
+			int lit = 0;
+			for (BlockPos g : c.lamps) {
+				if (level.getBlockState(g.above(4)).is(net.minecraft.world.level.block.Blocks.LANTERN)) {
+					lit++;
+				}
+			}
+			return paved + " " + earth + " " + c.lamps.size() + " " + lit + " | " + a + " | " + l;
+		});
+		String[] st = streets.split(" ");
+		check("the ways are paved", Integer.parseInt(st[0]) > 50 && Integer.parseInt(st[1]) == 0, streets + " (paved, still earth)");
+		check("street lamps stand along the ways", Integer.parseInt(st[2]) >= 5 && st[2].equals(st[3]), streets + " (lamps, lit)");
+		String still = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			StringBuilder bad = new StringBuilder();
+			for (Building b : c.buildings) {
+				String why = b.complete ? net.antwire.civitas.city.Access.rooms(level, b) : null;
+				var a = b.complete ? net.antwire.civitas.city.Access.audit(level, c, b) : null;
+				if (why != null || a != null && a.blocked() != null) {
+					bad.append(b.type.id()).append("; ");
+				}
+			}
+			return bad.isEmpty() ? "OK" : bad.toString();
+		});
+		check("paving and lamps keep every way walkable", still.equals("OK"), still);
+		String falseAlarms = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			StringBuilder out = new StringBuilder();
+			for (Building b : c.buildings) {
+				if (b.complete && !b.upgrading() && net.antwire.civitas.city.Works.inspect(level, c, b, false) > 0) {
+					var p = c.project(net.antwire.civitas.city.Project.REPAIR, "b:" + b.id);
+					out.append(b.type.id()).append("#").append(b.id).append(":");
+					for (var j : p.jobs) {
+						out.append(" ").append(j.s).append(" now ").append(level.getBlockState(j.p).getBlock().getDescriptionId().replace("block.minecraft.", ""))
+							.append(" below ").append(level.getBlockState(j.p.below()).getBlock().getDescriptionId().replace("block.minecraft.", ""));
+					}
+					out.append("; ");
+				}
+			}
+			return out.isEmpty() ? "OK" : out.toString();
+		});
+		check("no damage reported where nothing was damaged", falseAlarms.equals("OK"), falseAlarms);
+		sp.getServer().runCommand("time set 13500");
+		Vec3[] lampCam = sp.getServer().computeOnServer(server -> {
+			City c = CityManager.get().city(cityId);
+			if (c.lamps.isEmpty()) {
+				return null;
+			}
+			BlockPos l = c.lamps.get(c.lamps.size() / 2);
+			return new Vec3[]{Vec3.atCenterOf(l).add(9, 6, 9), Vec3.atCenterOf(l).add(0, 1, 0)};
+		});
+		if (lampCam != null) {
+			this.look(context, sp, lampCam[0].x, lampCam[0].y, lampCam[0].z, lampCam[1]);
+			context.waitTicks(60);
+			shot(context, "civitas_works_streets_dusk");
+		}
+		int[] r = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).wallRect);
+		double span = Math.max(r[2] - r[0], r[3] - r[1]);
+		this.look(context, sp, r[0] - span * 0.2, center.getY() + span * 0.5, r[3] + span * 0.2, new Vec3((r[0] + r[2]) / 2.0, center.getY(), (r[1] + r[3]) / 2.0));
+		context.waitTicks(120);
+		shot(context, "civitas_works_town_night");
+		sp.getServer().runCommand("time set 6000");
+		// the ledger's Works tab
+		sp.getServer().runOnServer(server -> {
+			var p = server.getPlayerList().getPlayers().getFirst();
+			net.antwire.civitas.network.ServerNet.openGovern(p, CityManager.get().city(cityId));
+		});
+		context.waitFor(mc -> mc.gui.screen() instanceof GovernScreen, 200);
+		context.runOnClient(mc -> ((GovernScreen) mc.gui.screen()).setTab(6));
+		context.waitTicks(60);
+		shot(context, "civitas_works_ledger");
+		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}
 
 	/** Photographs a building from the front, a little above. */

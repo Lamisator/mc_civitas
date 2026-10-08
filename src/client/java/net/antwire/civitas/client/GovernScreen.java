@@ -26,7 +26,7 @@ import net.minecraft.world.item.ItemStack;
 public class GovernScreen extends Screen {
 	static final int W = 400;
 	static final int H = 236;
-	public static final String[] TABS = {"Overview", "Citizens", "Buildings", "Laws", "Treasury", "Supply"};
+	public static final String[] TABS = {"Overview", "Citizens", "Buildings", "Laws", "Treasury", "Supply", "Works"};
 	static final int ROW = 11;
 	public int tab;
 	private int scroll;
@@ -38,6 +38,10 @@ public class GovernScreen extends Screen {
 	private String hoverNote;
 	private Button councilButton;
 	private Button loadButton;
+	private Button wallButton;
+	private Button paveButton;
+	private Button lampButton;
+	private Button autoRepairButton;
 
 	/** Number laws: key, label, step, unit. */
 	record Law(String key, String label, double step, String unit) {
@@ -97,7 +101,7 @@ public class GovernScreen extends Screen {
 		}
 		for (int i = 0; i < TABS.length; i++) {
 			int k = i;
-			this.tabButtons.add(this.addRenderableWidget(Button.builder(Component.literal(TABS[i]), b -> this.setTab(k)).bounds(l + 6 + i * 65, t + 20, 63, 16).build()));
+			this.tabButtons.add(this.addRenderableWidget(Button.builder(Component.literal(TABS[i]), b -> this.setTab(k)).bounds(l + 6 + i * 55, t + 20, 53, 16).build()));
 		}
 		// laws: - and + for the numbers, a switch for each toggle
 		for (int i = 0; i < NUMBERS.length; i++) {
@@ -161,6 +165,21 @@ public class GovernScreen extends Screen {
 				this.confirmConfiscate = true;
 			}
 		}).bounds(l + 8, t + 162, 190, 18).build()));
+		// works: the wall, the streets, repairs
+		this.perTab[6].add(this.wallButton = this.addRenderableWidget(Button.builder(Component.literal("Build the town wall"), b -> act("wall", null, 0, null, 0, 0))
+			.bounds(l + 10, t + 84, 182, 16).build()));
+		this.perTab[6].add(this.paveButton = this.addRenderableWidget(Button.builder(Component.literal("Pave the ways"), b -> act("streets", null, 1, null, 0, 0))
+			.bounds(l + 10, t + 136, 89, 16).build()));
+		this.perTab[6].add(this.lampButton = this.addRenderableWidget(Button.builder(Component.literal("Street lamps"), b -> act("streets", null, 2, null, 0, 0))
+			.bounds(l + 103, t + 136, 89, 16).build()));
+		this.perTab[6].add(this.autoRepairButton = this.addRenderableWidget(Button.builder(Component.literal("Auto-repair"), b -> {
+			Dto.Govern d = ClientState.govern;
+			if (d != null) {
+				act("autorepair", null, d.works.autoRepair ? 0 : 1, null, 0, 0);
+			}
+		}).bounds(l + 10, t + 188, 89, 16).build()));
+		this.perTab[6].add(this.addRenderableWidget(Button.builder(Component.literal("Repair all now"), b -> act("repair", null, 0, null, 0, 0))
+			.bounds(l + 103, t + 188, 89, 16).build()));
 		this.setTab(this.tab);
 	}
 
@@ -239,6 +258,13 @@ public class GovernScreen extends Screen {
 				return true;
 			}
 		}
+		if (d != null && d.editable && this.tab == 2 && mx > 112 && mx < 196 && my > 52) {
+			int i = (int) ((my - 52) / ROW) + this.scroll;
+			if (i >= 0 && i < d.buildings.size() && d.buildings.get(i).missing > 0 && d.buildings.get(i).repair < 0) {
+				act("repair", null, 0, null, 0, d.buildings.get(i).id);
+				return true;
+			}
+		}
 		if (d != null && d.editable && this.tab == 2 && mx > W - 100 && mx < W - 54 && my > 52) {
 			int i = (int) ((my - 52) / ROW) + this.scroll;
 			if (i >= 0 && i < d.buildings.size() && d.buildings.get(i).complete && d.buildings.get(i).upgrading == 0 && d.buildings.get(i).tier < 3) {
@@ -276,7 +302,8 @@ public class GovernScreen extends Screen {
 			case 2 -> this.buildings(g, d, l, t, mx, my);
 			case 3 -> this.laws(g, d, l, t);
 			case 4 -> this.treasury(g, d, l, t);
-			default -> this.supply(g, d, l, t);
+			case 5 -> this.supply(g, d, l, t);
+			default -> this.works(g, d, l, t);
 		}
 		g.fill(l, t + H - 13, l + W, t + H, 0xFF2A1C0E);
 		if (System.currentTimeMillis() - ClientState.messageTime < 8000) {
@@ -381,8 +408,16 @@ public class GovernScreen extends Screen {
 			int y = t + 52 + i * ROW;
 			g.text(this.font, b.title + " " + "I".repeat(Math.max(1, b.tier)), l + cols[0], y + 2, Ui.TEXT, false);
 			String state = b.upgrading > 0 ? (!b.stalled.isEmpty() ? "halted: no money" : "to tier " + b.upgrading + ": " + b.progress + "%")
-				: b.complete ? "in use" : !b.stalled.isEmpty() ? "halted: no money" : "building " + b.progress + "%";
-			Ui.small(g, this.font, state, l + cols[1], y + 3, b.upgrading == 0 && b.complete ? Ui.GREEN : !b.stalled.isEmpty() ? Ui.RED : 0xFFE8C547);
+				: !b.complete ? (!b.stalled.isEmpty() ? "halted: no money" : "building " + b.progress + "%")
+				: b.repair >= 0 ? (b.repairStalled ? "repair halted" : "repairing " + b.repair + "%")
+				: b.missing > 0 ? "damaged (" + b.condition + "%)" : "in use";
+			boolean damaged = b.complete && b.upgrading == 0 && (b.missing > 0 || b.repair >= 0);
+			Ui.small(g, this.font, state, l + cols[1], y + 3, damaged ? (b.repair >= 0 && !b.repairStalled ? 0xFFE8C547 : Ui.RED)
+				: b.upgrading == 0 && b.complete ? Ui.GREEN : !b.stalled.isEmpty() ? Ui.RED : 0xFFE8C547);
+			if (damaged && Ui.inside(mx, my, l + cols[1], y, l + cols[2] - 4, y + ROW)) {
+				this.hoverNote = b.missing + " blocks gone" + (b.foreign > 0 ? ", " + b.foreign + " taken by something else" : "")
+					+ (b.repair >= 0 ? " - being repaired" : d.editable ? " - click to repair" : "");
+			}
 			String people = b.beds > 0 ? b.residents + "/" + b.beds + " live here" : b.slots > 0 ? b.workers + "/" + b.slots + " work" : "";
 			Ui.small(g, this.font, people, l + cols[2], y + 3, Ui.MUTED);
 			if (b.revenue != 0 || b.cost != 0) {
@@ -465,6 +500,54 @@ public class GovernScreen extends Screen {
 			}
 			y += 2;
 		}
+	}
+
+	/** The town's works: its wall, its streets, repairs, and the jobs in hand. */
+	private void works(GuiGraphicsExtractor g, Dto.Govern d, int l, int t) {
+		Dto.Works w = d.works;
+		Ui.panel(g, l + 6, t + 40, l + 196, t + H - 16, Ui.PANEL);
+		Ui.panel(g, l + 202, t + 40, l + W - 6, t + H - 16, Ui.PANEL);
+		String[] roman = {"", "I", "II", "III"};
+		// the wall
+		g.text(this.font, "Town wall", l + 10, t + 44, Ui.GOLD, false);
+		Ui.small(g, this.font, w.wallTier == 0 ? "None yet." : "Tier " + roman[w.wallTier] + ": " + w.wallStyle + ".", l + 10, t + 56, Ui.TEXT);
+		if (w.wallRect != null) {
+			Ui.small(g, this.font, (w.wallRect[2] - w.wallRect[0] + 1) + " × " + (w.wallRect[3] - w.wallRect[1] + 1) + " blocks; it moves out as the town grows.",
+				l + 10, t + 65, Ui.MUTED);
+		} else {
+			Ui.small(g, this.font, "Wood at tier I, stone and timber at II, stone at III.", l + 10, t + 65, Ui.MUTED);
+		}
+		boolean wallBusy = w.projects.stream().anyMatch(p -> p.kind.equals("wall"));
+		this.wallButton.active = d.editable && !wallBusy && (w.wallTier == 0 || w.wallTier < w.townTier);
+		this.wallButton.setMessage(Component.literal(wallBusy ? "Wall: being built" : w.wallTier == 0 ? "Build the wall (~" + Money.plain(w.wallCost) + ")"
+			: w.wallTier < w.townTier ? "Rebuild in stone: tier " + roman[w.townTier] : "Wall keeps up by itself"));
+		// the streets
+		g.text(this.font, "Streets", l + 10, t + 110, Ui.GOLD, false);
+		Ui.small(g, this.font, "The ways are " + w.streetsText + (w.lamps > 0 ? " (" + w.lamps + " lamps)" : "") + ".", l + 10, t + 122, Ui.TEXT);
+		this.paveButton.active = d.editable && w.streets == 0;
+		this.paveButton.setMessage(Component.literal(w.streets >= 1 ? "Paved" : "Pave ~" + Money.plain(w.paveCost)));
+		this.lampButton.active = d.editable && w.streets == 1;
+		this.lampButton.setMessage(Component.literal(w.streets >= 2 ? "Lit" : w.streets == 1 ? "Lamps ~" + Money.plain(w.lampCost) : "Lamps (pave first)"));
+		// repairs
+		g.text(this.font, "Repairs", l + 10, t + 162, Ui.GOLD, false);
+		Ui.small(g, this.font, w.damaged == 0 ? "Nothing damaged." : w.damaged + " building(s) damaged.", l + 10, t + 174, w.damaged == 0 ? Ui.GREEN : Ui.RED);
+		this.autoRepairButton.setMessage(Component.literal(w.autoRepair ? "Auto-repair: on" : "Auto-repair: off").withColor(w.autoRepair ? Ui.GREEN : Ui.MUTED));
+		// work in hand
+		g.text(this.font, "Work in hand", l + 206, t + 44, Ui.GOLD, false);
+		int y = t + 58;
+		if (w.projects.isEmpty()) {
+			Ui.small(g, this.font, "Nothing besides new buildings.", l + 206, y, Ui.MUTED);
+		}
+		for (Dto.ProjectRow p : w.projects) {
+			if (y > t + H - 34) {
+				break;
+			}
+			g.text(this.font, p.title.length() > 32 ? p.title.substring(0, 31) + "…" : p.title, l + 206, y, Ui.TEXT, false);
+			Ui.small(g, this.font, (p.stalled ? "halted: no money · " : p.percent + "% · ") + p.jobs + " blocks · ~" + Money.plain(p.remaining) + " to go",
+				l + 210, y + 10, p.stalled ? Ui.RED : Ui.MUTED);
+			y += 22;
+		}
+		Ui.small(g, this.font, "Builders mend damage first, then new buildings, then the rest.", l + 206, t + H - 26, Ui.MUTED);
 	}
 
 	private void treasury(GuiGraphicsExtractor g, Dto.Govern d, int l, int t) {

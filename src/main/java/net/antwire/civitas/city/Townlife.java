@@ -326,6 +326,7 @@ public final class Townlife {
 			Storage.add(level, b, new ItemStack(Items.POTATO, 8));
 		}
 		fillRacks(level, b);
+		Works.placeSign(level, city, b);
 		if (b.type == BuildingType.TOWN_HALL) {
 			BlockPos plaza = b.mark("plaza");
 			if (plaza != null) {
@@ -507,6 +508,7 @@ public final class Townlife {
 		if (b.type == BuildingType.TOWN_HALL && b.mark("plaza") != null) {
 			city.center = b.mark("plaza");
 		}
+		Works.placeSign(level, city, b);
 		city.log("The " + b.type.title.toLowerCase() + " was raised to tier " + to);
 		level.playSound(null, b.entrance(), SoundEvents.PLAYER_LEVELUP, SoundSource.BLOCKS, 1.0F, 0.9F);
 		checkAccess(level, city, b);

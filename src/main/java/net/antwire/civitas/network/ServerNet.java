@@ -162,7 +162,47 @@ public final class ServerNet {
 			row.x = e.getX();
 			row.y = e.getY();
 			row.z = e.getZ();
+			row.condition = b.condition;
+			row.missing = b.missing;
+			row.foreign = b.foreign;
+			net.antwire.civitas.city.Project rep = c.project(net.antwire.civitas.city.Project.REPAIR, "b:" + b.id);
+			if (rep != null) {
+				row.repair = rep.percent();
+				row.repairStalled = !rep.stalled.isEmpty();
+			}
+			if (b.complete && (b.missing > 0 || rep != null)) {
+				d.works.damaged++;
+			}
 			d.buildings.add(row);
+		}
+		Dto.Works w = d.works;
+		w.autoRepair = c.autoRepair;
+		w.wallTier = c.wallTier;
+		w.wallStyle = net.antwire.civitas.city.Walls.style(c.wallTier);
+		w.townTier = c.tier();
+		w.wallRect = c.wallRect;
+		w.streets = c.streets;
+		w.streetsText = net.antwire.civitas.city.Streets.level(c.streets);
+		w.lamps = c.lamps.size();
+		if (level != null) {
+			if (c.wallTier == 0 && c.townHall() != null && c.townHall().complete) {
+				w.wallCost = net.antwire.civitas.city.Walls.estimate(level, c);
+			}
+			if (c.streets < 2) {
+				long[] est = net.antwire.civitas.city.Streets.estimate(level, c);
+				w.paveCost = est[0];
+				w.lampCost = est[1];
+			}
+		}
+		for (net.antwire.civitas.city.Project pr : c.projects) {
+			Dto.ProjectRow pr2 = new Dto.ProjectRow();
+			pr2.kind = pr.kind;
+			pr2.title = pr.title;
+			pr2.percent = pr.percent();
+			pr2.jobs = pr.jobs.size();
+			pr2.stalled = !pr.stalled.isEmpty();
+			pr2.remaining = net.antwire.civitas.city.Works.cost(pr.jobs, pr.progress);
+			w.projects.add(pr2);
 		}
 		net.antwire.civitas.city.Council.Strategy strat = net.antwire.civitas.city.Council.strategy(c);
 		d.strategy = strat.name().toLowerCase(java.util.Locale.ROOT);
@@ -422,6 +462,41 @@ public final class ServerNet {
 					c.name = a.text.trim();
 				}
 			}
+			case "repair" -> {
+				// one building (or every damaged part of the town)
+				int n = 0;
+				for (Building b : c.buildings) {
+					if (b.complete && !b.upgrading() && (a.building <= 0 || b.id == a.building)) {
+						n += net.antwire.civitas.city.Works.inspect(level, c, b, true);
+					}
+				}
+				if (a.building <= 0) {
+					net.antwire.civitas.city.Walls.inspect(level, c, true);
+					net.antwire.civitas.city.Streets.inspectLamps(level, c, true);
+				}
+				message(p, n == 0 ? "Nothing to repair" : "Repairs ordered: " + n + " blocks", n > 0);
+			}
+			case "autorepair" -> {
+				c.autoRepair = a.value != 0;
+				message(p, c.autoRepair ? "The builders repair damage as soon as it is found" : "Repairs only when you order them", true);
+			}
+			case "wall" -> {
+				if (c.townHall() == null || !c.townHall().complete) {
+					message(p, "Finish the town hall first", false);
+				} else if (c.project(net.antwire.civitas.city.Project.WALL, "wall") != null) {
+					message(p, "The wall is being built already", false);
+				} else if (c.wallTier > 0 && c.wallTier >= c.tier()) {
+					message(p, "The wall is as grand as the town (" + net.antwire.civitas.city.Walls.style(c.wallTier) + "); it grows with the town by itself", false);
+				} else {
+					int tier = Math.max(c.wallTier, c.tier());
+					int[] rect = c.wallRect == null ? net.antwire.civitas.city.Walls.needed(c)
+						: net.antwire.civitas.city.Walls.union(c.wallRect, net.antwire.civitas.city.Walls.needed(c));
+					net.antwire.civitas.city.Project pr = net.antwire.civitas.city.Walls.start(level, c, tier, rect);
+					message(p, pr == null ? "Nothing to build" : pr.title + ": about " + CommerceApi.format(net.antwire.civitas.city.Works.cost(pr.jobs, 0))
+						+ " in materials - the builders start when the new buildings are done", pr != null);
+				}
+			}
+			case "streets" -> message(p, net.antwire.civitas.city.Streets.order(level, c, (int) a.value), true);
 			default -> {
 			}
 		}

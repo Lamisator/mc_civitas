@@ -46,6 +46,58 @@ public final class CivitasCommands {
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(Arrays.stream(BuildingType.values()).map(BuildingType::id), b))
 					.executes(CivitasCommands::build)))
 			.then(Commands.literal("complete").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(CivitasCommands::complete))
+			.then(Commands.literal("inspect").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(c -> {
+				City city = here(c, null);
+				if (city == null) {
+					return 0;
+				}
+				ServerLevel level = c.getSource().getLevel();
+				StringBuilder out = new StringBuilder(city.name + ":");
+				int damaged = 0;
+				for (Building b : city.buildings) {
+					if (b.complete && !b.upgrading()) {
+						int n = net.antwire.civitas.city.Works.inspect(level, city, b, false);
+						if (b.missing > 0 || b.foreign > 0) {
+							damaged++;
+							out.append("\n  ").append(b.type.title).append(" #").append(b.id).append(": ").append(b.condition).append("% (")
+								.append(b.missing).append(" gone, ").append(b.foreign).append(" taken)").append(n > 0 && city.autoRepair ? ", repair queued" : "");
+						}
+					}
+				}
+				net.antwire.civitas.city.Walls.inspect(level, city, false);
+				net.antwire.civitas.city.Streets.inspectLamps(level, city, false);
+				if (damaged == 0) {
+					out.append(" every building as planned");
+				}
+				for (net.antwire.civitas.city.Project p : city.projects) {
+					out.append("\n  work: ").append(p.title).append(" ").append(p.percent()).append("% of ").append(p.jobs.size());
+				}
+				c.getSource().sendSuccess(() -> Component.literal(out.toString()), false);
+				return damaged;
+			}))
+			.then(Commands.literal("wall").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(c -> {
+				City city = here(c, null);
+				if (city == null) {
+					return 0;
+				}
+				int tier = Math.max(city.wallTier, city.tier());
+				int[] rect = city.wallRect == null ? net.antwire.civitas.city.Walls.needed(city)
+					: net.antwire.civitas.city.Walls.union(city.wallRect, net.antwire.civitas.city.Walls.needed(city));
+				var p = net.antwire.civitas.city.Walls.start(c.getSource().getLevel(), city, tier, rect);
+				c.getSource().sendSuccess(() -> Component.literal(p == null ? "The wall is as it should be" : p.title + ": " + p.jobs.size() + " blocks"), true);
+				return 1;
+			}))
+			.then(Commands.literal("streets").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+				.then(Commands.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 2)).executes(c -> {
+					City city = here(c, null);
+					if (city == null) {
+						return 0;
+					}
+					String msg = net.antwire.civitas.city.Streets.order(c.getSource().getLevel(), city,
+						com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c, "level"));
+					c.getSource().sendSuccess(() -> Component.literal(msg), true);
+					return 1;
+				})))
 			.then(Commands.literal("council")
 				.then(Commands.argument("strategy", StringArgumentType.word())
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(java.util.Arrays.stream(net.antwire.civitas.city.Council.Strategy.values())
@@ -273,9 +325,11 @@ public final class CivitasCommands {
 			}
 			n++;
 		}
+		int works = city.projects.size();
+		net.antwire.civitas.city.Works.completeAll(level, city);
 		int done = n;
-		c.getSource().sendSuccess(() -> Component.literal("Completed " + done + " building(s)"), true);
-		return n;
+		c.getSource().sendSuccess(() -> Component.literal("Completed " + done + " building(s) and " + works + " other work(s)"), true);
+		return n + works;
 	}
 
 	private static int day(CommandContext<CommandSourceStack> c) {

@@ -63,9 +63,18 @@ public final class Work {
 
 	public static @Nullable Task next(CitizenEntity npc, City city, CitizenRecord r) {
 		if (r.job == Job.BUILDER) {
+			// damage first, then new buildings, then the wall and the streets
+			net.antwire.civitas.city.Project repair = net.antwire.civitas.city.Works.next(city, true);
+			if (repair != null) {
+				return new BuildProject(npc, city, r, repair);
+			}
 			Building site = city.nextConstruction();
 			if (site != null) {
 				return new Build(npc, city, r, site);
+			}
+			net.antwire.civitas.city.Project works = net.antwire.civitas.city.Works.next(city, false);
+			if (works != null) {
+				return new BuildProject(npc, city, r, works);
 			}
 			Building hall = city.townHall();
 			return hall == null ? null : new Station(npc, city, r, hall);
@@ -246,6 +255,84 @@ public final class Work {
 		@Override
 		public void stop() {
 			super.stop();
+		}
+	}
+
+	/** Repairs, the wall, paving, street lamps: a list of jobs like a construction site's steps. */
+	public static class BuildProject extends Task {
+		private static final double REACH = 12;
+		private final net.antwire.civitas.city.Project project;
+		private int cooldown;
+
+		public BuildProject(CitizenEntity npc, City city, CitizenRecord rec, net.antwire.civitas.city.Project project) {
+			super(npc, city, rec);
+			this.project = project;
+		}
+
+		@Override
+		public String kind() {
+			return "build";
+		}
+
+		@Override
+		public void start() {
+			this.npc.hold(new ItemStack(this.project.repair() ? Items.IRON_AXE : Items.IRON_SHOVEL));
+		}
+
+		@Override
+		protected void run() {
+			if (!this.city.projects.contains(this.project)) {
+				this.done = true;
+				return;
+			}
+			if (--this.cooldown > 0) {
+				return;
+			}
+			var jobs = this.project.jobs;
+			int skips = 0;
+			while (this.project.progress < jobs.size() && skips < 200) {
+				net.antwire.civitas.city.Project.Job job = jobs.get(this.project.progress);
+				if (!net.antwire.civitas.city.Works.needed(this.level(), job)) {
+					this.project.progress++;
+					skips++;
+					continue;
+				}
+				// walk up to it; if there is no getting closer (a crater, a wall in the way), reach over from where they stand
+				if (this.npc.getEyePosition().distanceTo(Vec3.atCenterOf(job.p)) > REACH && this.ticks < 400) {
+					BlockPos spot = Walker.standable(this.level(), job.p.above(), 4);
+					this.walk(spot == null ? job.p.above() : spot, 1.5);
+					return;
+				}
+				Construction.Result r = net.antwire.civitas.city.Works.apply(this.level(), this.city, job, false);
+				if (r == Construction.Result.NO_MONEY) {
+					if (this.project.stalled.isEmpty()) {
+						this.city.log(this.project.title + " halted: the treasury can't pay for materials");
+					}
+					this.project.stalled = "Treasury can't pay for materials";
+					this.npc.say("We need money for materials!");
+					this.cooldown = 200;
+					this.done = true;
+					return;
+				}
+				this.project.stalled = "";
+				this.project.progress++;
+				if (r == Construction.Result.PLACED) {
+					this.look(job.p);
+					this.npc.swingArm();
+					this.npc.setAction(CitizenEntity.ACTION_WORK);
+					this.cooldown = (int) Math.max(2, CivitasConfig.get().buildTicksPerBlock / pace(this.city, this.rec));
+					break;
+				}
+				skips++;
+			}
+			if (this.project.progress >= jobs.size()) {
+				net.antwire.civitas.city.Works.finished(this.level(), this.city, this.project);
+				this.npc.say(this.project.repair() ? "All mended!" : "Done: " + this.project.title.toLowerCase(java.util.Locale.ROOT) + "!");
+				this.done = true;
+			}
+			if (this.ticks > 1200) {
+				this.done = true;
+			}
 		}
 	}
 

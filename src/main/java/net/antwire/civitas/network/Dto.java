@@ -59,6 +59,39 @@ public final class Dto {
 		public int x;
 		public int y;
 		public int z;
+		/** Last inspection: share of the plan standing, blocks gone, blocks taken by something else. */
+		public int condition = 100;
+		public int missing;
+		public int foreign;
+		/** A repair under way: its progress (-1 = none). */
+		public int repair = -1;
+		public boolean repairStalled;
+	}
+
+	public static class Works {
+		public boolean autoRepair;
+		public int wallTier;
+		public String wallStyle = "";
+		/** The tier a new or rebuilt wall would have (the town's). */
+		public int townTier;
+		public long wallCost;
+		public int[] wallRect;
+		public int streets;
+		public String streetsText = "";
+		public long paveCost;
+		public long lampCost;
+		public int lamps;
+		public List<ProjectRow> projects = new ArrayList<>();
+		public int damaged;
+	}
+
+	public static class ProjectRow {
+		public String kind;
+		public String title;
+		public int percent;
+		public int jobs;
+		public boolean stalled;
+		public long remaining;
 	}
 
 	public static class Plan {
@@ -109,6 +142,8 @@ public final class Dto {
 		public boolean keepsLoaded;
 		/** The supply check: "level|text" lines (0 fine, 1 warning, 2 trouble). */
 		public List<String> supply = new ArrayList<>();
+		/** Repairs, wall and streets. */
+		public Works works = new Works();
 	}
 
 	public static class Citizen {

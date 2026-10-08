@@ -328,6 +328,7 @@ public final class CityManager {
 			if (t % 20 == 0) {
 				Townlife.everySecond(level, city, this);
 			}
+			Works.tick(level, city, t);
 			if (newDay) {
 				city.day++;
 				DailyCycle.run(level, city, this);

@@ -45,6 +45,12 @@ public class Building {
 	public List<BlockPos> approachFill = new ArrayList<>();
 	/** What keeps people out, as last found by the daily check (empty when all is well). */
 	public String blocked = "";
+	/** The name sign beside the door (null = none yet). */
+	public @Nullable BlockPos sign;
+	/** Last inspection: blocks of the plan that are gone, blocks taken by something else, and the share that stands (percent). */
+	public int missing;
+	public int foreign;
+	public int condition = 100;
 
 	public Building() {
 	}
@@ -125,6 +131,11 @@ public class Building {
 	public AABB bounds() {
 		AABB box = box(this.blueprint(), this.origin);
 		return this.upgrading() ? box.minmax(box(this.targetBlueprint(), this.targetOrigin())) : box;
+	}
+
+	/** The land kept for the building: the grandest tier's footprint (for buildings planned with room for every tier). */
+	public AABB plot() {
+		return this.layout == 0 ? this.bounds() : box(Blueprints.of(this.type, Blueprints.TIERS), this.targetOrigin()).minmax(this.bounds());
 	}
 
 	private AABB box(Blueprint bp, BlockPos origin) {

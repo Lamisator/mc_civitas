@@ -76,6 +76,7 @@ public final class Work {
 			case BUTCHER -> Butcher.create(npc, city, r, w);
 			case BAKER, TAVERN_KEEPER, BLACKSMITH, FACTORY_WORKER -> Production.task(npc, city, r, w);
 			case SHERIFF -> Sheriff.create(npc, city, r, w);
+			case SOLDIER -> Military.Guard.create(npc, city, r);
 			default -> new Station(npc, city, r, w);
 		};
 	}
@@ -203,6 +204,12 @@ public final class Work {
 		/** Walks to a spot just outside the site, near the block to place (never into the walls going up). */
 		private void approach(BlockPos pos) {
 			AABB box = this.site.bounds();
+			if (!box.inflate(1).contains(Vec3.atCenterOf(pos))) {
+				// out on the way to the square: stand next to it
+				BlockPos spot = Walker.standable(this.level(), pos.above(), 3);
+				this.walk(spot == null ? pos.above() : spot, 1.5);
+				return;
+			}
 			double cx = Math.max(box.minX, Math.min(box.maxX, pos.getX() + 0.5));
 			double cz = Math.max(box.minZ, Math.min(box.maxZ, pos.getZ() + 0.5));
 			double dW = cx - box.minX;

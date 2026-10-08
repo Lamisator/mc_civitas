@@ -50,6 +50,7 @@ public class CitizenEntity extends PathfinderMob {
 	public static final int ACTION_PROTEST = 2;
 	public static final int ACTION_SIT = 3;
 	public static final int ACTION_BEG = 4;
+	public static final int ACTION_AIM = 5;
 
 	private @Nullable UUID cityId;
 	private final Brain brain = new Brain(this);
@@ -98,7 +99,12 @@ public class CitizenEntity extends PathfinderMob {
 		Job shown = r.status == CitizenRecord.Status.JAILED ? Job.PRISONER : r.job;
 		this.entityData.set(JOB, shown.ordinal());
 		this.entityData.set(TIER, r.tier(CommerceApi.balance(r.account(city))));
-		Tools.equip(this, shown);
+		if (shown == Job.SOLDIER) {
+			net.antwire.civitas.entity.ai.Military.equip(this, city, r);
+		} else {
+			net.antwire.civitas.entity.ai.Military.unequip(this);
+			Tools.equip(this, shown);
+		}
 	}
 
 	public @Nullable UUID cityId() {
@@ -219,7 +225,12 @@ public class CitizenEntity extends PathfinderMob {
 				return false;
 			}
 		}
-		return super.hurtServer(level, source, amount);
+		boolean hurt = super.hurtServer(level, source, amount);
+		City city = this.city();
+		if (hurt && city != null) {
+			net.antwire.civitas.entity.ai.Military.attacked(level, city, this, source.getEntity());
+		}
+		return hurt;
 	}
 
 	@Override

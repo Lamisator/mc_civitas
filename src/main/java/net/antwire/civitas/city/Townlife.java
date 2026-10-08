@@ -31,8 +31,18 @@ public final class Townlife {
 	}
 
 	public static void everySecond(ServerLevel level, City city, CityManager m) {
+		if (!city.accessChecked && level.getGameTime() % 1200 == 600) {
+			// once after loading: towns built before the access rules get their ways now
+			city.accessChecked = true;
+			for (Building b : List.copyOf(city.buildings)) {
+				if (b.complete) {
+					checkAccess(level, city, b);
+				}
+			}
+		}
 		tidy(city);
 		housing(city);
+		net.antwire.civitas.entity.ai.Military.tick(level, city);
 		if (city.policies.autoAssign) {
 			jobs(city);
 		}
@@ -149,6 +159,7 @@ public final class Townlife {
 				CitizenRecord r = idle.removeFirst();
 				r.job = b.type.job;
 				r.workplace = b.id;
+				r.nightWatch = b.type == BuildingType.BARRACKS && b.workers.size() % 2 == 1;
 				b.workers.add(r.uuid);
 				city.log(r.name + " now works as a " + r.job.title.toLowerCase());
 			}
@@ -175,6 +186,7 @@ public final class Townlife {
 		}
 		r.job = b.type.job;
 		r.workplace = b.id;
+		r.nightWatch = b.type == BuildingType.BARRACKS && b.workers.size() % 2 == 1;
 		b.workers.add(r.uuid);
 		return true;
 	}
@@ -208,6 +220,8 @@ public final class Townlife {
 			want = BuildingType.BLACKSMITH;
 		} else if (pop >= 10 && city.of(BuildingType.SHERIFF, false).isEmpty()) {
 			want = BuildingType.SHERIFF;
+		} else if ((pop >= 12 || pop >= 6 && city.day - city.lastAttackDay <= 3) && city.of(BuildingType.BARRACKS, false).isEmpty()) {
+			want = BuildingType.BARRACKS;
 		} else if (pop >= 14 && city.of(BuildingType.PRISON, false).isEmpty()) {
 			want = BuildingType.PRISON;
 		} else if (pop >= 16 && city.of(BuildingType.BANK, false).isEmpty()) {
@@ -284,14 +298,26 @@ public final class Townlife {
 			Storage.add(level, b, new ItemStack(Items.CARROT, 8));
 			Storage.add(level, b, new ItemStack(Items.POTATO, 8));
 		}
+		if (b.type == BuildingType.BARRACKS) {
+			// spare weapons on the racks
+			for (BlockPos rack : b.marks("rack")) {
+				if (level.getBlockEntity(rack) instanceof net.minecraft.world.Container c) {
+					for (int i = 0; i < c.getContainerSize(); i++) {
+						if (c.getItem(i).isEmpty()) {
+							c.setItem(i, net.antwire.civitas.compat.Arms.stack(net.antwire.civitas.compat.Arms.weapon(i == 1 ? 3 : 0)));
+						}
+					}
+				}
+			}
+		}
 		if (b.type == BuildingType.TOWN_HALL) {
 			BlockPos plaza = b.mark("plaza");
 			if (plaza != null) {
 				city.center = plaza;
 			}
 		}
-		// the path to the square
-		for (Construction.Step s : Construction.road(level, city, b)) {
+		// the path to the square (buildings planned before there were proper ways get a straight one)
+		for (Construction.Step s : b.approach.isEmpty() ? Construction.road(level, city, b) : List.<Construction.Step>of()) {
 			BlockState now = level.getBlockState(s.pos());
 			if (now.is(Blocks.GRASS_BLOCK) || now.is(Blocks.DIRT) || now.is(Blocks.COARSE_DIRT) || now.is(Blocks.PODZOL)) {
 				level.setBlock(s.pos(), Blocks.DIRT_PATH.defaultBlockState(), Block.UPDATE_ALL);
@@ -302,6 +328,25 @@ public final class Townlife {
 			}
 		}
 		level.playSound(null, b.entrance(), SoundEvents.PLAYER_LEVELUP, SoundSource.BLOCKS, 1.0F, 1.2F);
+		checkAccess(level, city, b);
+	}
+
+	/** Runs the access check on a finished building and tells the town when people can't get in. */
+	public static Access.Audit checkAccess(ServerLevel level, City city, Building b) {
+		Access.Audit a = Access.audit(level, city, b);
+		String now = a.blocked() == null ? "" : a.blocked();
+		if (!now.equals(b.blocked)) {
+			if (!now.isEmpty()) {
+				city.log("The " + b.type.title.toLowerCase() + " can't be used: " + now);
+			} else if (!b.blocked.isEmpty()) {
+				city.log("The " + b.type.title.toLowerCase() + " can be entered again");
+			}
+			b.blocked = now;
+		}
+		if (a.rerouted()) {
+			Construction.forget(b);
+		}
+		return a;
 	}
 
 	private record Offer(Item item, int count, long price) {

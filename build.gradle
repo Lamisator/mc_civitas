@@ -33,6 +33,11 @@ dependencies {
 	// Civitas runs on Commerce's currency, bank and shops
 	compileOnly files("libs/commerce-${project.commerce_version}.jar")
 	localRuntime files("libs/commerce-${project.commerce_version}.jar")
+	// soldiers carry Arsenal's guns and armour when Arsenal is installed (looked up at runtime, never required)
+	compileOnly files("libs/arsenal-${project.arsenal_version}.jar")
+	if (project.hasProperty("withArsenal")) {
+		localRuntime files("libs/arsenal-${project.arsenal_version}.jar")
+	}
 	// the ordnance factory builds RedButton missiles when RedButton is installed: -PwithRedButton=/path/redbutton.jar
 	if (project.hasProperty("withRedButton")) {
 		localRuntime files(project.property("withRedButton").toString())

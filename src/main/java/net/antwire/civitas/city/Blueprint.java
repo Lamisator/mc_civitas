@@ -73,6 +73,7 @@ public final class Blueprint {
 		}
 
 		public Blueprint build() {
+			Access.clearDoorways(this, "blueprint");
 			return new Blueprint(this.w, this.h, this.d, this.states, this.marks);
 		}
 

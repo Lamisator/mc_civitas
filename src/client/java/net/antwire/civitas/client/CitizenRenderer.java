@@ -38,6 +38,10 @@ public class CitizenRenderer extends HumanoidMobRenderer<CitizenEntity, CitizenR
 	public CitizenRenderer(EntityRendererProvider.Context context) {
 		super(context, new CitizenModel(context.bakeLayer(CitizenModel.LAYER)), 0.5F);
 		this.addLayer(new OutfitLayer(this));
+		// soldiers' helmets and body armour
+		this.addLayer(new net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer<>(this,
+			net.minecraft.client.renderer.entity.ArmorModelSet.bake(net.minecraft.client.model.geom.ModelLayers.PLAYER_ARMOR, context.getModelSet(),
+				net.minecraft.client.model.HumanoidModel::new), context.getEquipmentRenderer()));
 	}
 
 	@Override

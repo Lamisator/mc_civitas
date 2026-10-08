@@ -34,6 +34,9 @@ public class CitizenModel extends HumanoidModel<CitizenRenderState> {
 				this.leftArm.xRot = -2.6F + Mth.cos(t * 0.25F) * 0.25F;
 				this.leftArm.zRot = -0.2F;
 			}
+		} else if (state.action == CitizenEntity.ACTION_AIM) {
+			// shouldered rifle or drawn bow
+			net.minecraft.client.model.AnimationUtils.animateCrossbowHold(this.rightArm, this.leftArm, this.head, true);
 		} else if (state.action == CitizenEntity.ACTION_BEG) {
 			// cupped hands held out
 			this.rightArm.xRot = -1.1F;

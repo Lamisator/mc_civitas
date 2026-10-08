@@ -105,7 +105,7 @@ public class CivitasTour implements FabricClientGameTest {
 
 			// ---- the rest of the town (completed at once to keep the test short)
 			sp.getServer().runCommand("execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run civitas complete");
-			String[] kinds = {"farm", "bakery", "house", "house", "house", "lumber_mill", "mine", "butcher", "tavern", "blacksmith", "sheriff", "prison", "bank",
+			String[] kinds = {"farm", "bakery", "house", "house", "house", "lumber_mill", "mine", "butcher", "tavern", "blacksmith", "sheriff", "barracks", "prison", "bank",
 				"factory", "farm", "house"};
 			String planned = sp.getServer().computeOnServer(server -> {
 				ServerLevel level = server.overworld();
@@ -119,7 +119,7 @@ public class CivitasTour implements FabricClientGameTest {
 			});
 			check("sites for every building", !planned.contains("!"), planned);
 			sp.getServer().runCommand("execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run civitas complete");
-			sp.getServer().runCommand("execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run civitas immigrate 13");
+			sp.getServer().runCommand("execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run civitas immigrate 16");
 			context.waitTicks(200);
 			int jobs = sp.getServer().computeOnServer(server -> (int) CityManager.get().city(cityId).citizens.values().stream()
 				.filter(r -> r.present() && r.job != net.antwire.civitas.city.Job.UNEMPLOYED).count());
@@ -130,6 +130,47 @@ public class CivitasTour implements FabricClientGameTest {
 			this.look(context, sp, center.getX() - radius * 0.9, center.getY() + radius * 0.8, center.getZ() + radius * 0.9, Vec3.atCenterOf(center));
 			context.waitTicks(120);
 			shot(context, "civitas_town_aerial");
+
+			// ---- every building can be entered
+			java.util.List<String> lint = net.antwire.civitas.city.Access.lintAll();
+			check("blueprints are walkable from the door", lint.isEmpty(), lint.isEmpty() ? "all " + BuildingType.values().length + " blueprints" : lint.toString());
+			String access = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				StringBuilder bad = new StringBuilder();
+				int ways = 0;
+				for (Building b : c.buildings) {
+					// what the town has only just planned isn't built yet
+					String why = b.complete ? net.antwire.civitas.city.Access.rooms(level, b) : null;
+					if (why != null) {
+						bad.append(b.type.id()).append(": ").append(why).append("; ");
+						BlockPos e0 = b.entrance();
+						StringBuilder col = new StringBuilder();
+						for (int dy = -2; dy <= 6; dy++) {
+							col.append(dy).append('=').append(level.getBlockState(e0.above(dy)).getBlock().getDescriptionId().replace("block.minecraft.", "")).append(' ');
+						}
+						System.out.println("[civitas-test] DIAG " + b.type.id() + " origin " + b.origin.toShortString() + " rot " + b.rotation + " entrance column " + col
+							+ " way " + b.approach.subList(0, Math.min(4, b.approach.size())) + " fill " + b.approachFill + " complete " + b.complete + " blocked " + b.blocked);
+					}
+					if (!b.approach.isEmpty()) {
+						ways++;
+						for (int i = 1; i < b.approach.size(); i++) {
+							if (Math.abs(b.approach.get(i).getY() - b.approach.get(i - 1).getY()) > 1) {
+								bad.append(b.type.id()).append(": a step too high at ").append(b.approach.get(i).toShortString()).append("; ");
+								break;
+							}
+						}
+					}
+				}
+				return (bad.isEmpty() ? "OK" : bad.toString()) + " | " + ways + " of " + c.buildings.size() + " with a way to the square";
+			});
+			check("every building can be entered", access.startsWith("OK"), access);
+			if (run("access")) {
+				this.accessScenes(context, sp, cityId);
+			}
+			if (run("barracks")) {
+				this.barracksScenes(context, sp, cityId, center);
+			}
 
 			// ---- a working day
 			if (run("work")) {
@@ -292,6 +333,207 @@ public class CivitasTour implements FabricClientGameTest {
 			check("saved and reloaded", rl[0].equals(rl[1]), reload);
 			System.out.println("[civitas-test] RESULT " + (FAILS.isEmpty() ? "PASS" : "FAIL " + FAILS));
 		}
+	}
+
+	/** A house facing a bank of earth, and a way that a wall goes up across. */
+	private void accessScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId) {
+		// a site, then a three-high bank of earth piled up two steps in front of its door
+		String hill = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			c.radius = Math.max(c.radius, 70);
+			Building probe = net.antwire.civitas.city.Planner.find(level, c, BuildingType.HOUSE);
+			if (probe == null) {
+				return "FAIL no site: " + net.antwire.civitas.city.Planner.lastReason;
+			}
+			Direction front = probe.rot().rotate(Direction.SOUTH);
+			Direction side = front.getClockWise();
+			BlockPos e = probe.entrance();
+			for (int f = 2; f <= 5; f++) {
+				for (int l = -4; l <= 4; l++) {
+					BlockPos col = e.relative(front, f).relative(side, l);
+					for (int h = 0; h < 3; h++) {
+						level.setBlock(col.above(h), net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState(), 3);
+					}
+				}
+			}
+			BlockPos centre = probe.center();
+			Building b = net.antwire.civitas.city.Planner.fit(level, c, BuildingType.HOUSE, centre.getX(), centre.getZ(), front, 3);
+			if (b == null) {
+				return "FAIL refit: " + net.antwire.civitas.city.Planner.lastReason;
+			}
+			b.id = c.nextBuildingId++;
+			c.buildings.add(b);
+			b.steps = net.antwire.civitas.city.Construction.steps(b).size();
+			int climb = 0;
+			for (BlockPos p : b.approach) {
+				climb = Math.max(climb, p.getY() - b.origin.getY());
+			}
+			return b.id + " " + b.approach.size() + " " + b.approachFill.size() + " " + climb + " " + e.getX() + " " + e.getY() + " " + e.getZ() + " " + front.get2DDataValue();
+		});
+		check("a site facing a bank of earth gets a way", !hill.startsWith("FAIL"), hill);
+		if (hill.startsWith("FAIL")) {
+			return;
+		}
+		String[] h = hill.split(" ");
+		int houseId = Integer.parseInt(h[0]);
+		BlockPos e = new BlockPos(Integer.parseInt(h[4]), Integer.parseInt(h[5]), Integer.parseInt(h[6]));
+		Direction front = Direction.from2DDataValue(Integer.parseInt(h[7]));
+		sp.getServer().runCommand("execute positioned " + e.getX() + " " + e.getY() + " " + e.getZ() + " run civitas complete");
+		String walk = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			Building b = CityManager.get().city(cityId).building(houseId);
+			String rooms = net.antwire.civitas.city.Access.rooms(level, b);
+			// walk the way: every step room to stand, none higher than one block
+			for (int i = 0; i < b.approach.size(); i++) {
+				BlockPos g = b.approach.get(i);
+				if (!net.antwire.civitas.entity.ai.Walker.fits(level, g.above())) {
+					return "can't stand at " + g.above().toShortString() + " (" + level.getBlockState(g.above()).getBlock().getDescriptionId() + ")";
+				}
+				if (i > 0 && Math.abs(g.getY() - b.approach.get(i - 1).getY()) > 1) {
+					return "step too high at " + g.toShortString();
+				}
+			}
+			return rooms == null ? "OK" : rooms;
+		});
+		check("the house behind the bank can be walked into", walk.equals("OK"), walk + ", way " + h[1] + " steps, " + h[2] + " banked up, climbs " + h[3]);
+		Vec3 eye = Vec3.atCenterOf(e.relative(front, 12)).add(Vec3.atLowerCornerOf(front.getClockWise().getUnitVec3i()).scale(7)).add(0, 10, 0);
+		this.look(context, sp, eye.x, eye.y, eye.z, Vec3.atCenterOf(e.relative(front, 2)));
+		context.waitTicks(30);
+		shot(context, "civitas_access_bank");
+
+		// a wall goes up across the bakery's way (a player's stone bricks), and earth is dumped in its doorway
+		String reroute = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.firstComplete(BuildingType.BAKERY);
+			if (b == null || b.approach.size() < 8) {
+				return "FAIL no bakery way";
+			}
+			BlockPos door = b.entrance();
+			level.setBlock(door, net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState(), 3);
+			level.setBlock(door.above(), net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState(), 3);
+			BlockPos cut = b.approach.get(b.approach.size() / 2);
+			java.util.Set<Long> walled = new java.util.HashSet<>();
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dz = -1; dz <= 1; dz++) {
+					BlockPos col = cut.offset(dx, 0, dz);
+					walled.add(BlockPos.asLong(col.getX(), 0, col.getZ()));
+					for (int y = 1; y <= 3; y++) {
+						level.setBlock(col.above(y), net.minecraft.world.level.block.Blocks.STONE_BRICKS.defaultBlockState(), 3);
+					}
+				}
+			}
+			var a = net.antwire.civitas.city.Townlife.checkAccess(level, c, b);
+			boolean around = b.approach.stream().noneMatch(p -> walled.contains(BlockPos.asLong(p.getX(), 0, p.getZ())));
+			return a.cleared() + " " + a.rerouted() + " " + around + " " + (a.blocked() == null ? "-" : a.blocked().replace(' ', '_'));
+		});
+		String[] r = reroute.split(" ");
+		check("earth in the doorway is cleared", !reroute.startsWith("FAIL") && Integer.parseInt(r[0]) >= 2, reroute);
+		check("a wall across the way is walked around", !reroute.startsWith("FAIL") && r[1].equals("true") && r[2].equals("true") && r[3].equals("-"), reroute);
+	}
+
+	/** Soldiers against zombies at night, then a raid. */
+	private void barracksScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, BlockPos center) {
+		String kit = sp.getServer().computeOnServer(server -> {
+			City c = CityManager.get().city(cityId);
+			Building b = c.firstComplete(BuildingType.BARRACKS);
+			if (b == null) {
+				return "FAIL no barracks";
+			}
+			StringBuilder s = new StringBuilder();
+			for (java.util.UUID u : b.workers) {
+				CitizenEntity e = CityManager.get().entity(u);
+				if (e != null) {
+					e.refresh(c, c.citizens.get(u));
+					s.append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getMainHandItem().getItem()).getPath()).append('/')
+						.append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).getItem()).getPath())
+						.append(c.citizens.get(u).nightWatch ? "/night " : "/day ");
+				}
+			}
+			return b.workers.size() + " " + s;
+		});
+		check("the barracks has its soldiers", kit.startsWith("4 "), kit);
+		check("soldiers carry their kit", kit.contains(net.antwire.civitas.compat.Arms.arsenal() ? "m4a1/combat_helmet" : "bow/iron_helmet"), kit);
+		// the barracks
+		Vec3[] cam = sp.getServer().computeOnServer(server -> {
+			Building b = CityManager.get().city(cityId).firstComplete(BuildingType.BARRACKS);
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			Vec3 door = Vec3.atCenterOf(b.entrance());
+			return new Vec3[]{door.add(Vec3.atLowerCornerOf(front.getUnitVec3i()).scale(13)).add(Vec3.atLowerCornerOf(front.getClockWise().getUnitVec3i()).scale(5)).add(0, 11, 0),
+				door.add(Vec3.atLowerCornerOf(front.getOpposite().getUnitVec3i()).scale(3)).add(0, 1, 0)};
+		});
+		sp.getServer().runCommand("time set 3000");
+		context.waitTicks(200);
+		this.look(context, sp, cam[0].x, cam[0].y, cam[0].z, cam[1]);
+		context.waitTicks(40);
+		shot(context, "civitas_barracks");
+		// inside
+		Vec3[] in = sp.getServer().computeOnServer(server -> {
+			Building b = CityManager.get().city(cityId).firstComplete(BuildingType.BARRACKS);
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			BlockPos door = b.mark("door");
+			return new Vec3[]{Vec3.atBottomCenterOf(door.relative(front.getOpposite())).add(Vec3.atLowerCornerOf(front.getClockWise().getUnitVec3i()).scale(0.6)),
+				Vec3.atCenterOf(b.mark("workblock"))};
+		});
+		this.look(context, sp, in[0].x, in[0].y, in[0].z, in[1]);
+		context.waitTicks(30);
+		shot(context, "civitas_barracks_inside");
+
+		// night: zombies walk into the square
+		sp.getServer().runCommand("time set 14500");
+		sp.getServer().runCommand("effect give @a minecraft:night_vision 600 0 true");
+		BlockPos spot = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building b = c.firstComplete(BuildingType.BARRACKS);
+			BlockPos e = b.entrance();
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			BlockPos at = e.relative(front, 18);
+			at = new BlockPos(at.getX(), level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, at.getX(), at.getZ()), at.getZ());
+			for (int i = 0; i < 4; i++) {
+				var z = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+				z.snapTo(at.getX() + 0.5 + i, at.getY(), at.getZ() + 0.5, 0, 0);
+				z.setPersistenceRequired();
+				z.addTag("civitas_test_zombie");
+				level.addFreshEntity(z);
+			}
+			return at;
+		});
+		Vec3[] view = sp.getServer().computeOnServer(server -> {
+			Building b = CityManager.get().city(cityId).firstComplete(BuildingType.BARRACKS);
+			Direction front = b.rot().rotate(Direction.SOUTH);
+			Vec3 door = Vec3.atCenterOf(b.entrance());
+			return new Vec3[]{door.add(Vec3.atLowerCornerOf(front.getUnitVec3i()).scale(6)).add(Vec3.atLowerCornerOf(front.getClockWise().getUnitVec3i()).scale(7)).add(0, 4, 0),
+				door.add(Vec3.atLowerCornerOf(front.getUnitVec3i()).scale(11))};
+		});
+		this.look(context, sp, view[0].x, view[0].y, view[0].z, view[1]);
+		context.waitTicks(25);
+		shot(context, "civitas_soldiers_night");
+		int left = 4;
+		for (int t = 0; t < 40 && left > 0; t++) {
+			context.waitTicks(20);
+			left = sp.getServer().computeOnServer(server -> server.overworld().getEntities(net.minecraft.world.entity.EntityTypes.ZOMBIE,
+				z -> z.isAlive() && z.entityTags().contains("civitas_test_zombie")).size());
+			if (t == 0) {
+				shot(context, "civitas_soldiers_fight");
+			}
+		}
+		check("soldiers kill the monsters in town", left == 0, (4 - left) + " of 4 zombies killed");
+		sp.getServer().runCommand("effect clear @a minecraft:night_vision");
+
+		// a raid
+		sp.getServer().runCommand("execute positioned " + center.getX() + " " + center.getY() + " " + center.getZ() + " run civitas raid");
+		boolean beaten = false;
+		for (int t = 0; t < 90 && !beaten; t++) {
+			context.waitTicks(20);
+			beaten = sp.getServer().computeOnServer(server -> CityManager.get().city(cityId).log.stream().limit(8).anyMatch(l -> l.contains("raid was beaten off")));
+		}
+		String log = sp.getServer().computeOnServer(server -> String.join(" | ", CityManager.get().city(cityId).log.subList(0, 6)));
+		check("a raid is beaten off", beaten, log);
+		sp.getServer().runCommand("kill @e[type=minecraft:pillager]");
+		sp.getServer().runCommand("kill @e[type=minecraft:vindicator]");
+		sp.getServer().runCommand("time set 1500");
 	}
 
 	private void feedEveryone(TestSingleplayerContext sp, java.util.UUID cityId) {

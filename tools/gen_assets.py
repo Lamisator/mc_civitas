@@ -152,7 +152,26 @@ JOBS = {
     "tavern_keeper": dict(shirt=(236, 232, 220), sleeves="long", pants=(70, 60, 50), shoes=(70, 50, 36), vest=(40, 100, 60), apron=(230, 226, 214)),
     "clerk": dict(shirt=(118, 92, 66), sleeves="long", pants=(80, 70, 60), shoes=(50, 36, 26), collar=(240, 240, 240), glasses=True),
     "prisoner": dict(shirt=(240, 240, 240), stripes=(30, 30, 30), sleeves="long", pants=(240, 240, 240), pantstripes=True, shoes=(60, 60, 60)),
+    # Flecktarn field uniform and black boots (helmet and body armour come from the armour slots)
+    "soldier": dict(shirt=(104, 108, 74), sleeves="long", pants=(104, 108, 74), shoes=(28, 26, 24), camo=True),
 }
+
+FLECK = [(104, 108, 74), (60, 76, 46), (90, 70, 48), (36, 36, 30), (128, 136, 90)]
+
+
+def fleck(face, x, y, salt):
+    """Flecktarn: small blotches of five colours, the same pattern on every soldier."""
+    h = ((x * 73856093) ^ (y * 19349663) ^ (len(face) * 83492791) ^ salt) & 0xffff
+    v = h % 100
+    if v < 38:
+        return FLECK[0]
+    if v < 60:
+        return FLECK[1]
+    if v < 78:
+        return FLECK[2]
+    if v < 88:
+        return FLECK[3]
+    return FLECK[4]
 
 
 def outfit(job, spec, tier):
@@ -167,6 +186,8 @@ def outfit(job, spec, tier):
         shoes = (24, 22, 22)
 
     def cloth(c, face, x, y):
+        if spec.get("camo"):
+            return fleck(face, x, y, 7)
         if spec.get("check") and (x // 2 + y // 2) % 2 == 0:
             return spec["check"]
         if spec.get("stripes") and job in ("prisoner",) and y % 2 == 0:
@@ -232,6 +253,8 @@ def outfit(job, spec, tier):
         if y >= 10:
             return shoes
         c = pants
+        if spec.get("camo"):
+            c = fleck(face, x, y, 13)
         if spec.get("pantstripes") and y % 2 == 0:
             c = (30, 30, 30)
         if spec.get("apron") and face == "front" and y < 5 and job in ("baker", "butcher", "blacksmith", "tavern_keeper"):

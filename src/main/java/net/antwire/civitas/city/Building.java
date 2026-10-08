@@ -31,6 +31,12 @@ public class Building {
 	public long revenueYesterday;
 	public long costYesterday;
 	public int builtDay = -1;
+	/** The way from the door to the town square: the ground block of every step (see {@link Access}). */
+	public List<BlockPos> approach = new ArrayList<>();
+	/** Blocks banked up under the way where the ground dips. */
+	public List<BlockPos> approachFill = new ArrayList<>();
+	/** What keeps people out, as last found by the daily check (empty when all is well). */
+	public String blocked = "";
 
 	public Building() {
 	}

@@ -41,13 +41,26 @@ public class Civitas implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			CityManager.load(server);
 			LOGGER.info("Civitas: {} town(s)", CityManager.get().cities.size());
+			net.antwire.civitas.city.Access.lintAll();
 		});
 		ServerLifecycleEvents.AFTER_SAVE.register((server, flush, force) -> {
 			if (CityManager.get() != null) {
 				CityManager.get().save();
 			}
 		});
-		ServerLifecycleEvents.SERVER_STOPPED.register(server -> CityManager.unload());
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			CityManager.unload();
+			net.antwire.civitas.entity.ai.Military.clear();
+		});
+		// the town's enemies: what hunts villagers hunts citizens too
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+			if (CivitasConfig.get().monstersAttackCitizens && entity instanceof net.minecraft.world.entity.monster.Monster m
+				&& (m instanceof net.minecraft.world.entity.monster.zombie.Zombie || m instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton
+					|| m instanceof net.minecraft.world.entity.raid.Raider && !(m instanceof net.minecraft.world.entity.monster.Witch))) {
+				((net.antwire.civitas.mixin.MobAccessor) m).civitas$targetSelector().addGoal(3,
+					new net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal<>(m, net.antwire.civitas.entity.CitizenEntity.class, true));
+			}
+		});
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (CityManager.get() != null) {
 				CityManager.get().tick();

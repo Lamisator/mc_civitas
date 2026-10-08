@@ -42,6 +42,10 @@ public class City {
 	public long spendingToday;
 	public long incomeYesterday;
 	public long spendingYesterday;
+	/** Every building's access checked since the world was loaded. */
+	public transient boolean accessChecked;
+	/** The last day anyone attacked the town or its people. */
+	public int lastAttackDay = -100;
 
 	public static class DayStat {
 		public int day;

@@ -24,6 +24,9 @@ final class Tools {
 	}
 
 	static boolean isTool(Item item) {
+		if (net.antwire.civitas.compat.Arms.isWeapon(item)) {
+			return true;
+		}
 		for (Job j : Job.values()) {
 			if (of(j) == item && item != Items.AIR) {
 				return true;

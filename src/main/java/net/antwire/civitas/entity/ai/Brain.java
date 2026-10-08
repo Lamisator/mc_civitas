@@ -49,6 +49,11 @@ public final class Brain {
 		return t >= WORK_START && t < workEnd(p);
 	}
 
+	/** Working hours - or the watch, for a soldier. */
+	public static boolean onDuty(CitizenRecord r, Policies p, int t) {
+		return r.job == Job.SOLDIER ? Military.onDuty(r, t, workTime(p, t)) : workTime(p, t);
+	}
+
 	public void tick(City city, CitizenRecord r) {
 		if (this.npc.tickCount % 20 == 0) {
 			// needs: a full stomach lasts about a day, longer hours make you hungrier
@@ -96,13 +101,26 @@ public final class Brain {
 		if (r.leaving) {
 			return new Tasks.Leave(this.npc, city, r);
 		}
-		if (t >= sleepStart(p) || (p.curfew && t >= 12500 && !workTime(p, t))) {
+		net.minecraft.server.level.ServerLevel level = (net.minecraft.server.level.ServerLevel) this.npc.level();
+		// the alarm: soldiers turn out at any hour
+		if (r.job == Job.SOLDIER && r.free() && Military.alarm(level, city)) {
+			return this.task != null && this.task.kind().equals("guard") ? null : Military.Guard.create(this.npc, city, r);
+		}
+		if (r.job == Job.SOLDIER && r.nightWatch) {
+			if (Military.restsByDay(r, t)) {
+				return new Tasks.Sleep(this.npc, city, r);
+			}
+		} else if (t >= sleepStart(p) || (p.curfew && t >= 12500 && !workTime(p, t))) {
 			return new Tasks.Sleep(this.npc, city, r);
 		}
 		if (this.npc.isSleeping()) {
 			this.npc.stopSleeping();
 		}
-		boolean working = r.job != Job.UNEMPLOYED && workTime(p, t);
+		Task flee = Military.danger(this.npc, city, r);
+		if (flee != null) {
+			return this.task != null && this.task.kind().equals("flee") ? null : flee;
+		}
+		boolean working = r.job != Job.UNEMPLOYED && onDuty(r, p, t);
 		if ((city.strike && working) || city.riot) {
 			return new Tasks.Protest(this.npc, city, r);
 		}
@@ -131,7 +149,7 @@ public final class Brain {
 				return steal;
 			}
 		}
-		if (workTime(p, t) && r.job != Job.UNEMPLOYED) {
+		if (onDuty(r, p, t) && r.job != Job.UNEMPLOYED) {
 			Task w = Work.next(this.npc, city, r);
 			if (w != null) {
 				return w;

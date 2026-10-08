@@ -39,6 +39,7 @@ public final class Blueprints {
 			case PRISON -> prison();
 			case FACTORY -> factory();
 			case TAVERN -> tavern();
+			case BARRACKS -> barracks();
 		};
 	}
 
@@ -355,6 +356,8 @@ public final class Blueprints {
 		b.mark("cell", 7, 1, 3);
 		b.mark("cellbed", 2, 1, 3);
 		b.mark("cellbed", 8, 1, 3);
+		// the cell beds are nobody's home
+		b.marks.remove("bed");
 		b.set(5, 4, 5, Builder.lantern());
 		b.set(2, 2, 7, Blocks.IRON_BARS);
 		b.set(8, 2, 7, Blocks.IRON_BARS);
@@ -429,6 +432,78 @@ public final class Blueprints {
 		b.set(5, 4, 4, Builder.lantern());
 		b.set(3, 4, 4, Builder.lantern());
 		b.set(3, 3, 8, Builder.facing(Blocks.WALL_BANNER.green(), Direction.SOUTH));
+		return b.build();
+	}
+
+	/** An Arsenal block by id, or the fallback when Arsenal isn't installed. */
+	private static BlockState arsenal(String id, Direction facing, BlockState fallback) {
+		Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.fromNamespaceAndPath("arsenal", id));
+		return block == null || block == Blocks.AIR ? fallback : Builder.facing(block, facing);
+	}
+
+	/**
+	 * Stone barracks: four bunks with footlockers, the armoury along the east wall (Arsenal's weapon racks and ammunition
+	 * crates when it is installed), the duty officer's map table, and a parade ground in front with targets and the
+	 * alarm bell - all at the sides, the way to the door stays clear.
+	 */
+	private static Blueprint barracks() {
+		Builder b = Blueprint.builder(15, 12, 16);
+		b.frameHouse(1, 1, 13, 9, 4, Blocks.POLISHED_ANDESITE, Blocks.STONE_BRICKS, Blocks.SPRUCE_LOG, Blocks.DARK_OAK_DOOR, true);
+		ceiling(b, 2, 1, 12, 9, 5, Blocks.SPRUCE_PLANKS);
+		b.gableRoof(1, 1, 13, 9, 5, Blocks.DEEPSLATE_TILE_STAIRS, Blocks.DEEPSLATE_TILES);
+		ceiling(b, 2, 2, 12, 8, 5, Blocks.SPRUCE_PLANKS);
+		// the dormitory: bunks along the west wall, a footlocker between each
+		for (int z : new int[]{2, 4, 6, 8}) {
+			b.bed(3, 1, z, Blocks.BED.green(), Direction.WEST);
+		}
+		for (int z : new int[]{3, 5, 7}) {
+			b.set(2, 1, z, Builder.facing(Blocks.BARREL, Direction.UP));
+		}
+		// the armoury along the east wall
+		BlockState barrel = Builder.facing(Blocks.BARREL, Direction.UP);
+		b.set(12, 2, 3, arsenal("weapon_rack", Direction.WEST, Blocks.AIR.defaultBlockState()));
+		b.set(12, 2, 5, arsenal("weapon_rack", Direction.WEST, Blocks.AIR.defaultBlockState()));
+		b.mark("rack", 12, 2, 3);
+		b.mark("rack", 12, 2, 5);
+		b.set(12, 1, 7, arsenal("gun_rack", Direction.WEST, barrel));
+		b.mark("rack", 12, 1, 7);
+		b.set(12, 1, 2, arsenal("ammo_crate", Direction.WEST, barrel));
+		b.set(11, 1, 2, arsenal("ammo_crate", Direction.SOUTH, barrel));
+		b.set(12, 1, 4, Builder.facing(Blocks.CHEST, Direction.WEST));
+		b.mark("storage", 12, 1, 4);
+		b.set(12, 1, 3, Blocks.SMITHING_TABLE);
+		// the duty officer's map table under the colours
+		b.set(7, 1, 3, Blocks.CARTOGRAPHY_TABLE);
+		b.set(6, 1, 3, Builder.facing(Blocks.LECTERN, Direction.SOUTH));
+		b.mark("workblock", 7, 1, 3);
+		b.mark("work", 7, 1, 4);
+		b.set(7, 3, 2, Builder.facing(Blocks.WALL_BANNER.green(), Direction.SOUTH));
+		b.set(5, 4, 5, Builder.lantern());
+		b.set(9, 4, 5, Builder.lantern());
+		// the parade ground
+		b.fill(1, 0, 10, 13, 0, 14, Blocks.COARSE_DIRT);
+		b.fill(1, 1, 10, 13, 3, 14, Blocks.AIR);
+		for (int x = 1; x <= 13; x++) {
+			b.set(x, 0, 14, Blocks.STONE_BRICKS);
+		}
+		for (int x : new int[]{1, 13}) {
+			b.set(x, 1, 11, Blocks.HAY_BLOCK);
+			b.set(x, 2, 11, Blocks.TARGET);
+			b.set(x, 1, 12, Blocks.HAY_BLOCK);
+		}
+		b.set(1, 1, 14, Blocks.STONE_BRICK_WALL);
+		b.set(1, 2, 14, Builder.facing(Blocks.BELL, Direction.EAST));
+		b.mark("bell", 1, 2, 14);
+		for (int y = 1; y <= 4; y++) {
+			b.set(13, y, 14, Blocks.SPRUCE_FENCE);
+		}
+		b.set(13, 5, 14, Blocks.BANNER.green());
+		// sentries by the door, the parade ground for drill
+		b.mark("post", 5, 1, 10);
+		b.mark("post", 9, 1, 10);
+		b.mark("post", 7, 1, 12);
+		b.mark("parade", 4, 1, 12);
+		b.mark("parade", 10, 1, 12);
 		return b.build();
 	}
 }

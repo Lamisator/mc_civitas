@@ -82,7 +82,22 @@ public final class Planner {
 				lastReason = "overlaps the " + o.type.title;
 				return null;
 			}
+			// nothing goes up on the way to another building's door
+			for (BlockPos p : o.approach) {
+				if (p.getX() >= box.minX - 1 && p.getX() < box.maxX + 1 && p.getZ() >= box.minZ - 1 && p.getZ() < box.maxZ + 1) {
+					lastReason = "in the way to the " + o.type.title;
+					return null;
+				}
+			}
 		}
+		// and it must have a way in itself
+		Access.Route route = Access.route(level, city, b);
+		if (route == null) {
+			lastReason = "no way from the door to the square: " + Access.why;
+			return null;
+		}
+		b.approach = new ArrayList<>(route.path());
+		b.approachFill = new ArrayList<>(route.fill());
 		return b;
 	}
 

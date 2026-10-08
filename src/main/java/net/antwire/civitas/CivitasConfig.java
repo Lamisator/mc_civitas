@@ -39,6 +39,10 @@ public class CivitasConfig {
 	public double missileExportPrice = 450;
 	/** Days a town needs no food production before it imports bread for its citizens at market price. */
 	public boolean importFood = true;
+	/** Zombies, skeletons and illagers go for citizens as they do for villagers (what the barracks is for). */
+	public boolean monstersAttackCitizens = true;
+	/** Chance per day that raiders attack a town of 8 or more (0 = never). */
+	public double raidChance = 0.08;
 
 	public static CivitasConfig get() {
 		if (instance == null) {

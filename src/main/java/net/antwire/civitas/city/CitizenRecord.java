@@ -47,6 +47,8 @@ public class CitizenRecord {
 	public boolean thief;
 	/** Packing up to leave town. */
 	public boolean leaving;
+	/** Soldiers: on the night watch (on duty from dusk to dawn, asleep in the barracks by day). */
+	public boolean nightWatch;
 	/** Fed by the rations this day. */
 	public boolean rationed;
 

@@ -17,7 +17,8 @@ public enum Job {
 	FACTORY_WORKER("Munitions Worker", 1.4, false),
 	TAVERN_KEEPER("Innkeeper", 1.0, false),
 	CLERK("Town Clerk", 1.1, true),
-	PRISONER("Prisoner", 0.0, false);
+	PRISONER("Prisoner", 0.0, false),
+	SOLDIER("Soldier", 1.4, true);
 
 	public final String title;
 	/** Wage relative to the base wage. */

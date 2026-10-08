@@ -188,6 +188,7 @@ public final class ServerNet {
 			case PRISON -> "Cells for criminals";
 			case FACTORY -> net.antwire.civitas.compat.RedButtonCompat.missile() != null ? "Builds missiles" : "Makes explosives";
 			case TAVERN -> "Ale and good company";
+			case BARRACKS -> "Soldiers defend the town";
 			default -> "";
 		};
 	}

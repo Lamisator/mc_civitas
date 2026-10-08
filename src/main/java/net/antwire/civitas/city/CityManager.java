@@ -193,6 +193,7 @@ public final class CityManager {
 		city.foundedDay = currentDay(level);
 		Building hall = Planner.fit(level, city, BuildingType.TOWN_HALL, pos.getX(), pos.getZ(), front, 6);
 		if (hall == null) {
+			net.antwire.civitas.Civitas.LOGGER.info("No town hall at {}: {}", pos.toShortString(), Planner.lastReason);
 			why.setLength(0);
 			why.append("The ground here won't do (").append(Planner.lastReason).append(") - pick an open, fairly flat spot");
 			return null;

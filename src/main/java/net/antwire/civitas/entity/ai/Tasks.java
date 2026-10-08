@@ -104,9 +104,15 @@ public final class Tasks {
 		@Override
 		public void start() {
 			Building home = this.city.building(this.rec.home);
+			int i = home == null ? 0 : Math.max(0, home.residents.indexOf(this.rec.uuid));
+			if (this.rec.job == net.antwire.civitas.city.Job.SOLDIER && this.city.building(this.rec.workplace) instanceof Building barracks && barracks.complete
+				&& !barracks.marks("bed").isEmpty()) {
+				// soldiers sleep in their bunks
+				home = barracks;
+				i = Math.max(0, barracks.workers.indexOf(this.rec.uuid));
+			}
 			if (home != null && home.complete) {
 				List<BlockPos> beds = home.marks("bed");
-				int i = Math.max(0, home.residents.indexOf(this.rec.uuid));
 				for (int k = 0; k < beds.size(); k++) {
 					BlockPos foot = beds.get((i + k) % beds.size());
 					BlockState s = this.npc.level().getBlockState(foot);
@@ -146,7 +152,11 @@ public final class Tasks {
 				this.npc.getNavigation().moveTo(this.city.center.getX() + 3, this.city.center.getY(), this.city.center.getZ() - 3, 0.8);
 			}
 			int t = time(this.npc);
-			if (t < Brain.sleepStart(this.city.policies) && !(this.city.policies.curfew && t >= 12500)) {
+			if (this.rec.job == net.antwire.civitas.city.Job.SOLDIER && this.rec.nightWatch) {
+				if (!Military.restsByDay(this.rec, t)) {
+					this.done = true;
+				}
+			} else if (t < Brain.sleepStart(this.city.policies) && !(this.city.policies.curfew && t >= 12500)) {
 				this.done = true;
 			}
 		}

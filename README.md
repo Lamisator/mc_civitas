@@ -13,6 +13,7 @@ A Fabric mod for **Minecraft 26.3**. Found a town and settlers arrive. They buil
 - Minecraft 26.3, Fabric loader 0.19.5+, Fabric API
 - **Commerce** 1.0.0+: the currency, bank accounts and shop counters
 - optional: **RedButton**, so the ordnance factory builds real missiles
+- optional: **Arsenal** 1.1.0+, so soldiers carry M4A1 carbines, plate carriers and combat helmets
 
 ## Founding a town
 
@@ -72,6 +73,7 @@ Builders clear the site, lay foundations, raise the walls layer by layer, fit th
 | Prison | – | cells; prisoners serve their sentence |
 | Bank | banker | Commerce bank terminals for everyone |
 | Ordnance Factory | 3 workers | iron, gunpowder and redstone become missiles (RedButton) or TNT |
+| Barracks | 4 soldiers | defend the town day and night (see below) |
 
 The businesses trade with each other:
 - the baker walks to the farm, buys a batch of wheat and carries it home
@@ -87,7 +89,54 @@ Shop counters are real **Commerce** shop counters, so players buy bread, steak, 
 ![The smithy](docs/img/blacksmith.jpg)
 ![The mine's shaft head: the staircase goes down to the galleries](docs/img/mine.jpg)
 
+### Getting in
+
+Every building can be entered and used. The engine checks this at three points:
+
+- **Blueprints.** Nothing may stand in a doorway. Every bed, workbench, chest, counter and seat must be reachable from the door. Each blueprint is checked when the server starts.
+- **Planning.** Each site gets a walkable way from its door to the square, worked out over the real terrain. Where a bank of earth faces the door, the builders dig through it. Where the ground dips, they bank it up, by at most three blocks. No step is higher than one block. They never dig through a player's build. A site with no such way is not used. Nothing may later be built on a building's way.
+- **Every day.** Each building is checked: doorways, rooms and the way to the square. Anything nature put in the way is cleared, such as earth, snow, saplings or a grown tree, and holes in the way are filled. If a player builds across the way, a new way around it is found. If there is none, the ledger's log says what blocks it.
+
 By default the town council plans what the town needs by itself: food first, then homes, timber, ore and the trades. You can switch that off and plan everything yourself.
+
+## Defence
+
+From 12 citizens on, the town builds a **barracks**. It builds one from 6 citizens on if it was attacked in the last three days.
+
+The barracks is a stone hall with:
+- four bunks
+- an armoury: Arsenal's weapon racks and ammunition crates, with spare rifles on the racks
+- the duty officer's map table
+- a parade ground with targets and the alarm bell
+
+Soldiers wear Flecktarn camouflage, a helmet and body armour.
+
+| | With Arsenal | Without |
+|---|---|---|
+| Weapon | M4A1 carbine (3-round bursts, real bullets, magazine changes); the fourth soldier is a marksman with an AWM | longbow |
+| Armour | plate carrier and combat helmet | iron breastplate and helmet |
+
+**Two watches.** The first and third soldier stand the day watch during working hours. The second and fourth stand the night watch from dusk to dawn and sleep in the barracks by day. Off duty they live like everyone else. On duty, sentries stand by the barracks door and the others walk the rounds: the square, the edge of town, the workshops.
+
+**The alarm.** Every soldier turns out when there is an enemy in town, whatever the hour, waking from sleep if need be. When the threat is serious, the barracks bell rings: three or more enemies, raiders, or a hostile player.
+
+Enemies are:
+- monsters inside the town
+- raiders
+- anyone, mob or player, who hurt a citizen. A player stays an enemy for 5 minutes, a mob for 2.
+
+Creative-mode players are never shot at.
+
+Soldiers keep a friend out of their line of fire: they step aside rather than shoot through a citizen. They use the rifle butt when an enemy is close.
+
+Townsfolk run from danger that comes within 10 blocks. Sheriffs and soldiers stand their ground.
+
+**Enemies of the town.** Zombies, skeletons and illagers go for citizens as they do for villagers (`monstersAttackCitizens`). A prosperous town of 8 or more may be raided: a band of pillagers and vindicators gathers at the edge of town at dusk and marches on the square (`raidChance`, 8 % a day). The log reports where they came from and how the fight went.
+
+Soldiers are paid by the treasury, at 1.4 times the base wage.
+
+![The barracks: soldiers on the parade ground, targets and the alarm bell at the sides](docs/img/barracks.jpg)
+![Inside: bunks and footlockers, the map table under the colours, weapon racks and ammunition crates; the night watch asleep](docs/img/barracks_inside.jpg)
 
 ## Governing
 
@@ -174,6 +223,8 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `/civitas complete` | operators: finish all construction at once |
 | `/civitas day` | operators: let a day pass |
 | `/civitas immigrate <n>` | operators: settlers arrive |
+| `/civitas raid` | operators: raiders attack the town you're in |
+| `/civitas access` | operators: check (and repair) access to every building now |
 
 ## Configuration
 
@@ -194,12 +245,14 @@ Every day the town reports its earnings, which move the share price. Strikes and
 | `mineDepthY` | 0 | how deep the mines dig |
 | `missileExportPrice` | 450 | what the state pays for a missile |
 | `importFood` | true | rations come from the market if the bakery is empty |
+| `monstersAttackCitizens` | true | zombies, skeletons and illagers hunt citizens |
+| `raidChance` | 0.08 | chance a day of a raid on a town of 8+ (0 = never) |
 
 ## Building from source
 
 ```
-./gradlew build                                    # build/libs/civitas-1.0.0.jar (needs libs/commerce-1.0.0.jar)
-./gradlew runClientGameTest -PwithRedButton=<jar>  # founds a town, governs it well and badly, takes screenshots
+./gradlew build                                    # build/libs/civitas-1.1.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.0.jar)
+./gradlew runClientGameTest -PwithArsenal          # founds a town, checks access, fights, governs it well and badly, takes screenshots
 ```
 
 Skins, outfits and all other art come from `tools/gen_assets.py`.

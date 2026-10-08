@@ -1,5 +1,7 @@
 package net.antwire.civitas.city;
 
+import java.util.List;
+
 import java.util.Iterator;
 import java.util.Map;
 import net.antwire.civitas.CivitasConfig;
@@ -281,6 +283,13 @@ public final class DailyCycle {
 			}
 		}
 		Townlife.updatePrices(level, city);
+		net.antwire.civitas.entity.ai.Military.daily(level, city);
+		// can everyone still get in everywhere?
+		for (Building b : List.copyOf(city.buildings)) {
+			if (b.complete) {
+				Townlife.checkAccess(level, city, b);
+			}
+		}
 
 		// ---- feelings fade, the books close
 		city.grievance *= 0.7;

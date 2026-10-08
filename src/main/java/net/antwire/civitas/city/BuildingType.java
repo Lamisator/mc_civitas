@@ -16,7 +16,8 @@ public enum BuildingType {
 	SHERIFF("Sheriff's Office", Job.SHERIFF, 2, 0, 180),
 	PRISON("Prison", null, 0, 0, 260),
 	FACTORY("Ordnance Factory", Job.FACTORY_WORKER, 3, 0, 600),
-	TAVERN("Tavern", Job.TAVERN_KEEPER, 1, 0, 200);
+	TAVERN("Tavern", Job.TAVERN_KEEPER, 1, 0, 200),
+	BARRACKS("Barracks", Job.SOLDIER, 4, 0, 350);
 
 	public final String title;
 	public final Job job;

@@ -46,6 +46,35 @@ public final class CivitasCommands {
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(Arrays.stream(BuildingType.values()).map(BuildingType::id), b))
 					.executes(CivitasCommands::build)))
 			.then(Commands.literal("complete").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(CivitasCommands::complete))
+			.then(Commands.literal("raid").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(c -> {
+				City city = here(c, null);
+				if (city == null) {
+					return 0;
+				}
+				int n = net.antwire.civitas.entity.ai.Military.raid(c.getSource().getLevel(), city);
+				c.getSource().sendSuccess(() -> Component.literal(n + " raiders sent against " + city.name), true);
+				return n;
+			}))
+			.then(Commands.literal("access").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(c -> {
+				City city = here(c, null);
+				if (city == null) {
+					return 0;
+				}
+				int bad = 0;
+				for (Building b : java.util.List.copyOf(city.buildings)) {
+					if (!b.complete) {
+						continue;
+					}
+					var a = net.antwire.civitas.city.Townlife.checkAccess(c.getSource().getLevel(), city, b);
+					String line = b.type.title + ": " + (a.blocked() == null ? "OK" : a.blocked()) + (a.cleared() + a.filled() > 0 ? " (" + a.cleared()
+						+ " cleared, " + a.filled() + " filled)" : "") + (a.rerouted() ? ", new way" : "");
+					if (a.blocked() != null) {
+						bad++;
+					}
+					c.getSource().sendSuccess(() -> Component.literal(line).withStyle(a.blocked() == null ? ChatFormatting.GREEN : ChatFormatting.RED), false);
+				}
+				return bad;
+			}))
 			.then(Commands.literal("day").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)).executes(CivitasCommands::day))
 			.then(Commands.literal("immigrate").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 				.then(Commands.argument("count", IntegerArgumentType.integer(1, 40)).executes(CivitasCommands::immigrate))));
@@ -169,17 +198,7 @@ public final class CivitasCommands {
 				continue;
 			}
 			for (Construction.Step s : Construction.steps(b)) {
-				if (s.kind() == Construction.Kind.CLEAR) {
-					if (Construction.natural(level.getBlockState(s.pos())) && level.getBlockEntity(s.pos()) == null) {
-						level.setBlock(s.pos(), s.state(), net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
-					}
-				} else if (s.kind() == Construction.Kind.FOUNDATION) {
-					if (level.getBlockState(s.pos()).canBeReplaced()) {
-						level.setBlock(s.pos(), s.state(), net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
-					}
-				} else {
-					Construction.placeFull(level, s.pos(), s.state());
-				}
+				Construction.applyFree(level, s);
 			}
 			Townlife.complete(level, city, b);
 			n++;

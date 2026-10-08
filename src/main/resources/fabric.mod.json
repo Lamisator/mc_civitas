@@ -12,6 +12,9 @@
 		"main": ["net.antwire.civitas.Civitas"],
 		"client": ["net.antwire.civitas.client.CivitasClient"]
 	},
+	"mixins": [
+		"civitas.mixins.json"
+	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~26.3",
@@ -20,6 +23,7 @@
 		"commerce": ">=1.0.0"
 	},
 	"suggests": {
-		"redbutton": "*"
+		"redbutton": "*",
+		"arsenal": ">=1.1.0"
 	}
 }

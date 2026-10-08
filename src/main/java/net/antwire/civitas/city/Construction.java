@@ -97,6 +97,16 @@ public final class Construction {
 				}
 			}
 		}
+		// last, the way to the square: bank up the dips, dig through the banks, tread the path
+		java.util.Set<BlockPos> tops = new java.util.HashSet<>(b.approach);
+		for (BlockPos f : b.approachFill) {
+			out.add(new Step(Kind.FOUNDATION, f, (tops.contains(f) ? Blocks.DIRT : Blocks.COBBLESTONE).defaultBlockState()));
+		}
+		for (BlockPos g : b.approach) {
+			out.add(new Step(Kind.CLEAR, g.above(2), air));
+			out.add(new Step(Kind.CLEAR, g.above(), air));
+			out.add(new Step(Kind.ROAD, g, Blocks.DIRT_PATH.defaultBlockState()));
+		}
 		return out;
 	}
 
@@ -142,7 +152,7 @@ public final class Construction {
 				for (ItemStack drop : Block.getDrops(now, level, pos, level.getBlockEntity(pos))) {
 					city.addStock(BuiltInRegistries.ITEM.getKey(drop.getItem()).toString(), drop.getCount());
 				}
-				level.setBlock(pos, target, Block.UPDATE_ALL);
+				Access.dig(level, pos, Block.UPDATE_ALL);
 				level.playSound(null, pos, now.getSoundType().getBreakSound(), SoundSource.BLOCKS, 0.7F, 1.0F);
 				return Result.PLACED;
 			}
@@ -150,7 +160,8 @@ public final class Construction {
 				if (!now.canBeReplaced() && now.getFluidState().isEmpty()) {
 					return Result.SKIPPED;
 				}
-				if (!Materials.take(city, Items.COBBLESTONE, 1)) {
+				Item fill = step.state().getBlock().asItem();
+				if (!Materials.take(city, fill == Items.AIR ? Items.COBBLESTONE : fill, 1)) {
 					return Result.NO_MONEY;
 				}
 				level.setBlock(pos, step.state(), Block.UPDATE_ALL);
@@ -174,7 +185,8 @@ public final class Construction {
 				if (step.kind() == Kind.ROAD && !(now.is(Blocks.GRASS_BLOCK) || now.is(Blocks.DIRT) || now.is(Blocks.COARSE_DIRT) || now.is(Blocks.PODZOL))) {
 					return Result.SKIPPED;
 				}
-				Item item = target.getBlock().asItem();
+				// treading a path costs nothing
+				Item item = step.kind() == Kind.ROAD ? Items.AIR : target.getBlock().asItem();
 				if (item != Items.AIR && !Materials.take(city, item, 1)) {
 					return Result.NO_MONEY;
 				}
@@ -184,6 +196,30 @@ public final class Construction {
 			}
 		}
 		return Result.SKIPPED;
+	}
+
+	/** Carries out a step at once and for free (the complete command): the same rules as builders, no materials. */
+	public static void applyFree(ServerLevel level, Step step) {
+		BlockPos pos = step.pos();
+		BlockState now = level.getBlockState(pos);
+		switch (step.kind()) {
+			case CLEAR -> {
+				if (!now.isAir() && natural(now) && level.getBlockEntity(pos) == null && now.getDestroySpeed(level, pos) >= 0) {
+					Access.dig(level, pos, Block.UPDATE_CLIENTS);
+				}
+			}
+			case FOUNDATION -> {
+				if (now.canBeReplaced() || !now.getFluidState().isEmpty()) {
+					level.setBlock(pos, step.state(), Block.UPDATE_CLIENTS);
+				}
+			}
+			case ROAD -> {
+				if (now.is(Blocks.GRASS_BLOCK) || now.is(Blocks.DIRT) || now.is(Blocks.COARSE_DIRT) || now.is(Blocks.PODZOL)) {
+					level.setBlock(pos, step.state(), Block.UPDATE_CLIENTS);
+				}
+			}
+			case BLOCK -> placeFull(level, pos, step.state());
+		}
 	}
 
 	/** Sets a block, with the second half of doors and beds. */

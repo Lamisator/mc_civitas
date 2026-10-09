@@ -180,6 +180,9 @@ public class CivitasTour implements FabricClientGameTest {
 			if (run("council")) {
 				this.councilScenes(context, sp, cityId, center);
 			}
+			if (run("supply")) {
+				this.supplyScenes(context, sp, cityId, center);
+			}
 			if (run("works")) {
 				this.worksScenes(context, sp, cityId, center);
 			}
@@ -1086,6 +1089,118 @@ public class CivitasTour implements FabricClientGameTest {
 		shot(context, "civitas_ledger_supply");
 		context.runOnClient(mc -> mc.gui.setScreen(null));
 		sp.getServer().runCommand("time set 1500");
+	}
+
+	/**
+	 * 1.3.1: a bakery with an empty till still gets its wheat (the treasury pays when subsidies are on) and bakes; and
+	 * townsfolk only run from a monster they can see.
+	 */
+	private void supplyScenes(ClientGameTestContext context, TestSingleplayerContext sp, java.util.UUID cityId, BlockPos center) {
+		sp.getServer().runCommand("time set 1500");
+		String setup = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			Building bakery = c.firstComplete(BuildingType.BAKERY);
+			Building farm = c.firstComplete(BuildingType.FARM);
+			String acct = bakery.account(c);
+			net.antwire.commerce.api.CommerceApi.burn(acct, net.antwire.commerce.api.CommerceApi.balance(acct), "test: empty till");
+			net.antwire.civitas.city.Storage.take(level, bakery, net.minecraft.world.item.Items.WHEAT, 999);
+			var shop = net.antwire.civitas.city.Storage.shop(level, bakery);
+			if (shop != null) {
+				for (int i = 0; i < shop.getContainerSize(); i++) {
+					shop.setItem(i, net.minecraft.world.item.ItemStack.EMPTY);
+				}
+			}
+			net.antwire.civitas.city.Storage.add(level, farm, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT, 40));
+			c.policies.subsidies = true;
+			return "till " + net.antwire.commerce.api.CommerceApi.balance(acct) + ", bakers " + bakery.workers.size() + ", farm wheat "
+				+ net.antwire.civitas.city.Storage.count(level, farm, net.minecraft.world.item.Items.WHEAT);
+		});
+		System.out.println("[civitas-test] supply setup: " + setup);
+		String bread = "0";
+		for (int t = 0; t < 60; t++) {
+			context.waitTicks(40);
+			bread = sp.getServer().computeOnServer(server -> {
+				ServerLevel level = server.overworld();
+				City c = CityManager.get().city(cityId);
+				Building bakery = c.firstComplete(BuildingType.BAKERY);
+				var shop = net.antwire.civitas.city.Storage.shop(level, bakery);
+				int n = net.antwire.civitas.city.Storage.count(level, bakery, net.minecraft.world.item.Items.BREAD);
+				if (shop != null) {
+					for (int i = 0; i < shop.getContainerSize(); i++) {
+						if (shop.getItem(i).is(net.minecraft.world.item.Items.BREAD)) {
+							n += shop.getItem(i).getCount();
+						}
+					}
+				}
+				return n + "|" + net.antwire.civitas.city.Storage.count(level, bakery, net.minecraft.world.item.Items.WHEAT);
+			});
+			if (!bread.startsWith("0|")) {
+				break;
+			}
+		}
+		check("a bakery with an empty till buys wheat and bakes bread", !bread.startsWith("0|"), "bread|wheat at the bakery: " + bread + " (" + setup + ")");
+
+		// line of sight: a zombie behind a wall doesn't scare anyone; with the wall gone it does
+		// (the town's threat list is worked out once a tick, so each step waits a tick)
+		String placed = sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			for (CitizenRecord r : c.citizens.values()) {
+				CitizenEntity e = CityManager.get().entity(r.uuid);
+				if (e != null && r.present() && r.job != net.antwire.civitas.city.Job.SOLDIER && r.job != net.antwire.civitas.city.Job.SHERIFF) {
+					e.setNoAi(true);
+					BlockPos at = e.blockPosition();
+					for (int dz = -3; dz <= 3; dz++) {
+						for (int dy = 0; dy < 4; dy++) {
+							level.setBlockAndUpdate(at.offset(2, dy, dz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+						}
+					}
+					var z = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+					z.snapTo(at.getX() + 5.5, at.getY(), at.getZ() + 0.5, 0, 0);
+					z.setNoAi(true);
+					z.setPersistenceRequired();
+					z.addTag("civitas_sight_zombie");
+					level.addFreshEntity(z);
+					return r.uuid + " " + at.getX() + " " + at.getY() + " " + at.getZ();
+				}
+			}
+			return "none";
+		});
+		java.util.function.Supplier<String> verdict = () -> sp.getServer().computeOnServer(server -> {
+			ServerLevel level = server.overworld();
+			City c = CityManager.get().city(cityId);
+			java.util.UUID id = java.util.UUID.fromString(placed.split(" ")[0]);
+			var t = net.antwire.civitas.entity.ai.Military.danger(CityManager.get().entity(id), c, c.citizens.get(id));
+			return t == null ? "calm" : t.kind();
+		});
+		String sight = "no citizen";
+		if (!placed.equals("none")) {
+			context.waitTicks(3);
+			String behind = verdict.get();
+			String[] p = placed.split(" ");
+			BlockPos at = new BlockPos(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3]));
+			sp.getServer().runOnServer(server -> {
+				for (int dz = -3; dz <= 3; dz++) {
+					for (int dy = 0; dy < 4; dy++) {
+						server.overworld().setBlockAndUpdate(at.offset(2, dy, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+					}
+				}
+			});
+			context.waitTicks(3);
+			String open = verdict.get();
+			sight = behind + "|" + open;
+			sp.getServer().runOnServer(server -> {
+				for (var z : server.overworld().getEntities(net.minecraft.world.entity.EntityTypes.ZOMBIE, z -> z.entityTags().contains("civitas_sight_zombie"))) {
+					z.discard();
+				}
+				CitizenEntity e = CityManager.get().entity(java.util.UUID.fromString(placed.split(" ")[0]));
+				if (e != null) {
+					e.setNoAi(false);
+				}
+			});
+		}
+		check("townsfolk only run from monsters they can see", sight.equals("calm|flee"), "behind a wall | in the open: " + sight);
 	}
 
 	/** Soldiers against zombies at night, then a raid. */

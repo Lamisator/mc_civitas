@@ -218,7 +218,7 @@ Soldiers keep a friend out of their line of fire: they step aside rather than sh
 
 The governor and the deputies are never treated as enemies. If they strike a citizen, the log notes it and the guards look away.
 
-Townsfolk run from danger that comes within 10 blocks. Sheriffs and soldiers stand their ground.
+Townsfolk run from danger they can see within 10 blocks, or from whoever just hurt them. A monster behind a wall, under the floor or in a sealed room doesn't scare them, and once it has been out of sight for two seconds they go back to what they were doing. Sheriffs and soldiers stand their ground.
 
 **Enemies of the town.** Zombies, skeletons and illagers go for citizens as they do for villagers (`monstersAttackCitizens`). A prosperous town of 8 or more may be raided: a band of pillagers and vindicators gathers at the edge of town at dusk and marches on the square (`raidChance`, 8 % a day). The log reports where they came from and how the fight went.
 
@@ -299,7 +299,7 @@ The **ledger** has five tabs.
 | Prison sentence | 2 days | per crime |
 | Dividend | 0.05 %/day | if the town is listed |
 | Free rations | off | the treasury feeds those who can't afford bread |
-| Wage subsidies | on | the treasury pays wages a business can't |
+| Wage subsidies | on | the treasury pays the wages and supplies a business can't afford (since 1.3.1 also its raw materials, so a bakery with an empty till still buys wheat) |
 | Curfew | off | everyone home at nightfall; less crime, less joy |
 | Martial law | off | the sheriff arrests protest leaders |
 | Forced labour | off | prisoners work in the mine, unpaid |
@@ -387,7 +387,7 @@ Every day the town reports its earnings, which move the share price. Strikes and
 ## Building from source
 
 ```
-./gradlew build                                    # build/libs/civitas-1.3.0.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.1.jar)
+./gradlew build                                    # build/libs/civitas-1.3.1.jar (needs libs/commerce-1.0.0.jar, libs/arsenal-1.1.1.jar)
 ./gradlew runClientGameTest -PwithArsenal          # founds a town, checks access, fights, governs it well and badly, takes screenshots
 ```
 

@@ -133,8 +133,11 @@ public final class Supply {
 			if (b.workers.isEmpty()) {
 				out.add(new Line(BAD, "The bakery has no baker. Assign someone (Citizens) - bread only comes from a baker."));
 			} else if (wheat < 3) {
-				out.add(new Line(WARN, "The bakery is out of wheat" + (wheatAtFarms > 0 ? " - the baker fetches it from the farm when the bakery can pay for it ("
-					+ CommerceApi.format(CommerceApi.balance(b.account(city))) + " in its till)." : " and the farms have none to sell.")));
+				long till = CommerceApi.balance(b.account(city));
+				String pay = city.policies.subsidies ? "; with subsidies on, the treasury pays for it when the till is short"
+					: till <= 0 ? ", but its till is empty and subsidies are off - turn subsidies on (Laws) or raise the bread price" : "";
+				out.add(new Line(WARN, "The bakery is out of wheat" + (wheatAtFarms > 0 ? " - the baker fetches it from the farm (" + CommerceApi.format(till)
+					+ " in its till" + pay + ")." : " and the farms have none to sell; the baker orders it from the market" + pay + ".")));
 			}
 		}
 		// the meat chain

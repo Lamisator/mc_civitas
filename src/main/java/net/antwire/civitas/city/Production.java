@@ -80,6 +80,28 @@ public final class Production {
 		return p > 0 ? p : Materials.price(item);
 	}
 
+	/**
+	 * Makes sure a business can pay {@code cost} for its supplies. With subsidies on (Laws), the treasury tops the till up
+	 * when it runs short - as it does for wages - so a bakery whose takings went on wages can still buy wheat. Without
+	 * subsidies, or with an empty treasury, the business has to make do with what it has.
+	 */
+	static boolean fund(City city, Building b, long cost) {
+		String acct = b.account(city);
+		long bal = CommerceApi.balance(acct);
+		if (bal >= cost) {
+			return true;
+		}
+		if (!city.policies.subsidies) {
+			return false;
+		}
+		long gap = cost - bal;
+		if (CommerceApi.transfer(city.account(), acct, gap, "Subsidy (supplies)")) {
+			city.spendingToday += gap;
+			return true;
+		}
+		return false;
+	}
+
 	static boolean wanted(ServerLevel level, Building b, Recipe r) {
 		ShopBlockEntity shop = Storage.shop(level, b);
 		if (r.forShop && shop != null) {
@@ -133,7 +155,8 @@ public final class Production {
 						}
 					}
 				}
-				// nobody in town has it: order from outside
+				// nobody in town has it: order from outside (the quote is above the plain price: allow for the spread)
+				fund(city, b, price(e.getKey()) * need * 3 / 2);
 				long cost = CommerceApi.buyFromMarket(b.account(city), e.getKey(), need);
 				if (cost > 0) {
 					b.costToday += cost;
@@ -273,6 +296,10 @@ public final class Production {
 					return;
 				}
 				long each = price(this.item);
+				int there = Math.min(this.amount, Storage.count(level, this.from, this.item));
+				if (each > 0 && there > 0) {
+					fund(this.city, this.home, each * there);
+				}
 				long afford = each <= 0 ? this.amount : CommerceApi.balance(this.home.account(this.city)) / each;
 				int want = (int) Math.min(this.amount, afford);
 				int got = want <= 0 ? 0 : Storage.take(level, this.from, this.item, want);

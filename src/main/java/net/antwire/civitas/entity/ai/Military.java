@@ -538,13 +538,23 @@ public final class Military {
 		if (r.job == Job.SOLDIER || r.job == Job.SHERIFF || !(npc.level() instanceof ServerLevel level)) {
 			return null;
 		}
-		LivingEntity e = nearest(level, city, npc, 10);
-		return e == null ? null : new Flee(npc, city, r, e);
+		// only what they can see scares them (a zombie behind a wall or under the floor doesn't), or whoever just hurt them
+		LivingEntity best = null;
+		double bestD = 10 * 10;
+		for (LivingEntity e : threats(level, city)) {
+			double d = e.distanceToSqr(npc);
+			if (d < bestD && (npc.hasLineOfSight(e) || npc.getLastHurtByMob() == e && npc.tickCount - npc.getLastHurtByMobTimestamp() < 100)) {
+				bestD = d;
+				best = e;
+			}
+		}
+		return best == null ? null : new Flee(npc, city, r, best);
 	}
 
 	public static class Flee extends Task {
 		private final LivingEntity from;
 		private @Nullable BlockPos to;
+		private int seen;
 
 		Flee(CitizenEntity npc, City city, CitizenRecord rec, LivingEntity from) {
 			super(npc, city, rec);
@@ -563,7 +573,11 @@ public final class Military {
 
 		@Override
 		protected void run() {
-			if (!this.from.isAlive() || this.npc.distanceTo(this.from) > 18 || this.ticks > 300) {
+			// out of sight for two seconds: safe again
+			if (this.npc.hasLineOfSight(this.from) || this.npc.distanceTo(this.from) < 3) {
+				this.seen = this.ticks;
+			}
+			if (!this.from.isAlive() || this.npc.distanceTo(this.from) > 18 || this.ticks > 300 || this.ticks - this.seen > 40) {
 				this.done = true;
 				return;
 			}
